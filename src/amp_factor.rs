@@ -1,34 +1,93 @@
 use borsh::{BorshDeserialize, BorshSerialize};
+use muldiv::MulDiv;
 
-type Timestamp = solana_program::clock::UnixTimestamp;
+use crate::error::PoolError;
+
+type TimestampT = u64;
+type ValueT = u32;
+
+//we don't want to use a minimum amp factor that's too low because it would make adjustment steps
+// too discontinuous (in the most extreme case, going from 1 to 2 would constitute a doubling)
+const MIN_AMP_VALUE: ValueT = 10;
+const MAX_AMP_VALUE: ValueT = (10 as ValueT).pow(6);
+
+const MIN_ADJUSTMENT_WINDOW: TimestampT = 60*60*24;
+const MAX_RELATIVE_ADJUSTMENT: ValueT = 10;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub struct AmpFactor {
-    initial_value: u64,
-    initial_timestamp: Timestamp,
-    target_value: u64,
-    target_timestamp: Timestamp,
+    //invariants:
+    // inital_ts <= target_ts
+    // MIN_AMP_VALUE <= initial_value <= MAX_AMP_VALUE
+    // MIN_AMP_VALUE <= target_value <= MAX_AMP_VALUE
+    initial_value: ValueT,
+    initial_ts: TimestampT,
+    target_value: ValueT,
+    target_ts: TimestampT,
 }
 
 impl AmpFactor {
-    pub fn new(amp_factor: u64, ts: Timestamp) -> AmpFactor {
+    pub fn new(amp_factor: ValueT) -> AmpFactor {
         AmpFactor{
-            initial_value: amp_factor,
-            initial_timestamp: ts,
-            target_value: 0,
-            target_timestamp: 0,
+            initial_value: MIN_AMP_VALUE,
+            initial_ts: 0,
+            target_value: amp_factor,
+            target_ts: 0,
         }
     }
 
-    pub fn get(&self, ts: Timestamp) {
-        todo!("impl");
+    pub fn get(&self, current_ts: TimestampT) -> ValueT {
+        if current_ts >= self.target_ts { //check if we are inside an adjustment window
+            //not in an adjustment window
+            self.target_value
+        }
+        else {
+            assert!(current_ts >= self.initial_ts);
+
+            //we are within an adjustment window and hence need to interpolate the amp factor
+            //
+            //mathematically speaking we ought to use exponential interpolation
+            // to see why, assume an amp factor adjustment from 1 to 4:
+            // going from 1 to 2 constitutes a doubling, as does going from 2 to 4
+            // hence we should use the first half of the alotted time to go from 1 to 2 and
+            // the second half to go from 2 to 4
+            //
+            //ultimately however, it's only important that the adjustment happens gradually
+            // to prevent exploitation (see: https://medium.com/@peter_4205/curve-vulnerability-report-a1d7630140ec)
+            // and so for simplicity's sake we use linear interpolation and restrict
+            // the maximum change to a factor of 10
+            
+            let value_diff = self.target_value as i64 - self.initial_value as i64;
+            let time_since_initial = (current_ts - self.initial_ts) as i64;
+            let total_adjustment_time = (self.target_ts - self.initial_ts) as i64;
+
+            let delta = value_diff.mul_div_round(time_since_initial,total_adjustment_time).unwrap();
+
+            (self.initial_value as i64 + delta) as _
+        }
     }
 
-    pub fn adjust(&mut self, value: u64, ts: Timestamp) {
-        todo!("impl");
+    pub fn set_target(&mut self, current_ts: TimestampT, target_value: ValueT, target_ts: TimestampT) -> Result<(), PoolError> {
+        if target_value < MIN_AMP_VALUE || target_value > MAX_AMP_VALUE || target_ts < current_ts + MIN_ADJUSTMENT_WINDOW {
+            return Err(PoolError::InvalidAmpInput);
+        }
+        
+        let initial_value = self.get(current_ts);
+        if (initial_value < target_value && initial_value*MAX_RELATIVE_ADJUSTMENT < target_value) ||
+           (initial_value > target_value && initial_value > target_value*MAX_RELATIVE_ADJUSTMENT) {
+            return Err(PoolError::InvalidAmpInput);
+        }
+
+        self.initial_value = initial_value;
+        self.initial_ts = current_ts;
+        self.target_value = target_value;
+        self.target_ts = target_ts;
+
+        Ok(())
     }
 
-    pub fn stop_adjustment(&mut self) {
-        todo!("impl");
+    pub fn stop_adjustment(&mut self, current_ts: TimestampT) {
+        self.target_value = self.get(current_ts);
+        self.target_ts = current_ts;
     }
 }

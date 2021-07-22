@@ -16,15 +16,16 @@ spl-token = { version = "3.1.1", features = ["no-entrypoint"] }
 borsh = { version = "0.9.1", features = ["const-generics"] }
 borsh-derive = "0.9.1"
 
-#large uints
+#numerics
 #uint = { version = "0.9.1", default-features = false }
+muldiv = "1.0.0"
 
 #error handling
 thiserror = "1.0"
 num-traits = "0.2"
 num-derive = "0.3"
 
-#
+#misc
 arrayvec = "0.7.1"
 
 [dev-dependencies]

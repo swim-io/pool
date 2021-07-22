@@ -1,51 +1,53 @@
 //naming: pool_fee to distinguish from other fees (such as Solana's fee sysvar)
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use muldiv::MulDiv;
 use crate::error::PoolError;
-//use std::mem::variant_count; //TODO not stabilized yet so hardcoding variant_count for now
 
-pub enum Type {
+//fees are stored with a resolution of one hundredth of a basis point, i.e. 10^-6
+const DECIMALS: u8 = 6;
+//10^(DECIMALS+2) has to fit into ValueT
+pub type ValueT = u32;
+const DECIMALS_DENOMINATOR: ValueT = (10 as ValueT).pow(DECIMALS as u32);
+
+pub enum FeeType {
     Trade = 0, //= 0 to indicated that the integer values serve as indices into an array
     Governance,
 }
 
 //used to abstract away the decimals that Fees uses to store rates internally
-pub struct Repr {
-    pub value: u32,
+pub struct FeeRepr {
+    pub value: ValueT,
     pub decimals: u8,
 }
 
-//fees are stored with a resolution of one hundredth of a basis point, i.e. 10^-6
-const DECIMALS: u8 = 6;
-const DECIMALS_DENOMINATOR: u32 = 10u32.pow(DECIMALS as u32);
-
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
-//TODO replace hardcoded 2 with variant_count::<FeeType>() once it's stabilized
-pub struct PoolFees([u32; 2]);
+//TODO replace hardcoded 2 with std::mem::variant_count::<FeeType>() once it's stabilized
+pub struct PoolFees([ValueT; 2]);
 
 impl PoolFees {
     pub fn new() -> Self {
-        Self([0u32; 2])
+        Self([0; 2])
     }
 
-    pub fn set_fee(& mut self, fee_type: Type, fee_rate: Repr) -> Result<(), PoolError> {
+    pub fn set_fee(& mut self, fee_type: FeeType, fee_rate: FeeRepr) -> Result<(), PoolError> {
         self.0[fee_type as usize] = if fee_rate.value > 0 {
-            if fee_rate.value / 10u32.pow(fee_rate.decimals as u32) > 0 {
+            if fee_rate.value / (10 as ValueT).checked_pow(fee_rate.decimals as u32).ok_or(PoolError::InvalidFeeInput)? > 0 {
                 //fee has to be less than 100 %
                 return Err(PoolError::InvalidFeeInput);
             }
     
             if fee_rate.decimals > DECIMALS {
                 //if the passed in decimals are larger than what we can represent internally
-                // then those digits better not matter (i.e. be zero)
-                let denominator = 10u32.pow((fee_rate.decimals - DECIMALS) as u32);
+                // then those digits better be zero
+                let denominator = (10 as ValueT).pow((fee_rate.decimals - DECIMALS) as u32);
                 if fee_rate.value % denominator != 0 {
                     return Err(PoolError::InvalidFeeInput);
                 }
                 fee_rate.value / denominator
             }
             else {
-                fee_rate.value * 10u32.pow((DECIMALS - fee_rate.decimals) as u32)
+                fee_rate.value * (10 as ValueT).pow((DECIMALS - fee_rate.decimals) as u32)
             }
         }
         else {
@@ -54,11 +56,11 @@ impl PoolFees {
         Ok(())
     }
 
-    pub fn get_fee(&self, fee_type: Type) -> Repr {
-        Repr{value: self.0[fee_type as usize], decimals: DECIMALS}
+    pub fn get_fee(&self, fee_type: FeeType) -> FeeRepr {
+        FeeRepr{value: self.0[fee_type as usize], decimals: DECIMALS}
     }
 
-    pub fn apply_fee(&self, fee: Type, amount: u64) -> u64 {
-        ((amount as u128 * self.0[fee as usize] as u128) / DECIMALS_DENOMINATOR as u128) as u64
+    pub fn apply_fee(&self, fee_type: FeeType, amount: u64) -> u64 {
+        amount.mul_div_round(self.0[fee_type as usize] as u64, DECIMALS_DENOMINATOR as u64).unwrap()
     }
 }
