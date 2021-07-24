@@ -11,10 +11,26 @@ const OFFSET: isize = 100;
 
 #[derive(Error, Debug, FromPrimitive)]
 pub enum PoolError {
-	#[error("Invalid amp factor input")]
-	InvalidAmpInput = OFFSET,
-	#[error("Invalid fee input")]
+	#[error("Specified amp factor is out of bounds")]
+	InvalidAmpFactorValue = OFFSET,
+	#[error("Amp factor adjustment window is too short")]
+	InvalidAmpFactorTimestamp,
+	#[error("Given fee is invalid")]
 	InvalidFeeInput,
+	#[error("Can't pass the same account twice here")]
+	DuplicateAccount,
+	#[error("Lp token mint has a positive balance")]
+	MintHasBalance,
+	#[error("Pool does not have mint authority of lp token mint")]
+	InvalidMintAuthority,
+	#[error("Lp token mint's freeze authority is set")]
+	MintHasFreezeAuthority,
+	#[error("Token account has a positive balance")]
+	TokenAccountHasBalance,
+	#[error("Token account's delegate is set")]
+	TokenAccountHasDelegate,
+	#[error("Token account's close authority is set")]
+	TokenAccountHasCloseAuthority,
 }
 
 impl From<PoolError> for ProgramError {

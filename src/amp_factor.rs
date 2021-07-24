@@ -3,16 +3,16 @@ use muldiv::MulDiv;
 
 use crate::error::PoolError;
 
-type TimestampT = u64;
-type ValueT = u32;
+pub type TimestampT = u64;
+pub type ValueT = u32;
 
 //we don't want to use a minimum amp factor that's too low because it would make adjustment steps
 // too discontinuous (in the most extreme case, going from 1 to 2 would constitute a doubling)
-const MIN_AMP_VALUE: ValueT = 10;
-const MAX_AMP_VALUE: ValueT = (10 as ValueT).pow(6);
+pub const MIN_AMP_VALUE: ValueT = 10;
+pub const MAX_AMP_VALUE: ValueT = (10 as ValueT).pow(6);
 
-const MIN_ADJUSTMENT_WINDOW: TimestampT = 60*60*24;
-const MAX_RELATIVE_ADJUSTMENT: ValueT = 10;
+pub const MIN_ADJUSTMENT_WINDOW: TimestampT = 60*60*24;
+pub const MAX_RELATIVE_ADJUSTMENT: ValueT = 10;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub struct AmpFactor {
@@ -26,13 +26,24 @@ pub struct AmpFactor {
     target_ts: TimestampT,
 }
 
+impl Default for AmpFactor {
+    fn default() -> Self {
+        AmpFactor::new(MIN_AMP_VALUE).unwrap()
+    }
+}
+
 impl AmpFactor {
-    pub fn new(amp_factor: ValueT) -> AmpFactor {
-        AmpFactor{
-            initial_value: MIN_AMP_VALUE,
-            initial_ts: 0,
-            target_value: amp_factor,
-            target_ts: 0,
+    pub fn new(amp_factor: ValueT) -> Result<AmpFactor, PoolError> {
+        if !(MIN_AMP_VALUE..MAX_AMP_VALUE).contains(&amp_factor) {
+            Err(PoolError::InvalidAmpFactorValue)
+        }
+        else {
+            Ok(AmpFactor{
+                initial_value: MIN_AMP_VALUE,
+                initial_ts: 0,
+                target_value: amp_factor,
+                target_ts: 0,
+            })
         }
     }
 
@@ -68,14 +79,18 @@ impl AmpFactor {
     }
 
     pub fn set_target(&mut self, current_ts: TimestampT, target_value: ValueT, target_ts: TimestampT) -> Result<(), PoolError> {
-        if target_value < MIN_AMP_VALUE || target_value > MAX_AMP_VALUE || target_ts < current_ts + MIN_ADJUSTMENT_WINDOW {
-            return Err(PoolError::InvalidAmpInput);
+        if !(MIN_AMP_VALUE..MAX_AMP_VALUE).contains(&target_value) {
+            return Err(PoolError::InvalidAmpFactorValue);
+        }
+
+        if target_ts < current_ts + MIN_ADJUSTMENT_WINDOW {
+            return Err(PoolError::InvalidAmpFactorTimestamp);
         }
         
         let initial_value = self.get(current_ts);
         if (initial_value < target_value && initial_value*MAX_RELATIVE_ADJUSTMENT < target_value) ||
            (initial_value > target_value && initial_value > target_value*MAX_RELATIVE_ADJUSTMENT) {
-            return Err(PoolError::InvalidAmpInput);
+            return Err(PoolError::InvalidAmpFactorValue);
         }
 
         self.initial_value = initial_value;
