@@ -458,19 +458,17 @@ div#notebook {
  min-height: 0px;
  box-shadow: none;
  width: 980px;
- margin-right: auto;
+ margin-right: 100px;
  margin-left: auto;
 }
 div#ipython-main-app.container {
  width: 980px;
- margin-right: auto;
- margin-left: auto;
- margin-right: auto;
+ margin-right: 100px;
  margin-left: auto;
 }
 .container {
  width: 980px;
- margin-right: auto;
+ margin-right: 100px;
  margin-left: auto;
 }
 div#menubar-container {
