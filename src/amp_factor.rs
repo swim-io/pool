@@ -11,7 +11,7 @@ pub type ValueT = u32;
 pub const MIN_AMP_VALUE: ValueT = 10;
 pub const MAX_AMP_VALUE: ValueT = (10 as ValueT).pow(6);
 
-pub const MIN_ADJUSTMENT_WINDOW: TimestampT = 60*60*24;
+pub const MIN_ADJUSTMENT_WINDOW: TimestampT = 60 * 60 * 24;
 pub const MAX_RELATIVE_ADJUSTMENT: ValueT = 10;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
@@ -36,9 +36,8 @@ impl AmpFactor {
     pub fn new(amp_factor: ValueT) -> Result<AmpFactor, PoolError> {
         if !(MIN_AMP_VALUE..MAX_AMP_VALUE).contains(&amp_factor) {
             Err(PoolError::InvalidAmpFactorValue)
-        }
-        else {
-            Ok(AmpFactor{
+        } else {
+            Ok(AmpFactor {
                 initial_value: MIN_AMP_VALUE,
                 initial_ts: 0,
                 target_value: amp_factor,
@@ -48,11 +47,11 @@ impl AmpFactor {
     }
 
     pub fn get(&self, current_ts: TimestampT) -> ValueT {
-        if current_ts >= self.target_ts { //check if we are inside an adjustment window
+        if current_ts >= self.target_ts {
+            //check if we are inside an adjustment window
             //not in an adjustment window
             self.target_value
-        }
-        else {
+        } else {
             assert!(current_ts >= self.initial_ts);
 
             //we are within an adjustment window and hence need to interpolate the amp factor
@@ -67,18 +66,25 @@ impl AmpFactor {
             // to prevent exploitation (see: https://medium.com/@peter_4205/curve-vulnerability-report-a1d7630140ec)
             // and so for simplicity's sake we use linear interpolation and restrict
             // the maximum change to a factor of 10
-            
+
             let value_diff = self.target_value as i64 - self.initial_value as i64;
             let time_since_initial = (current_ts - self.initial_ts) as i64;
             let total_adjustment_time = (self.target_ts - self.initial_ts) as i64;
 
-            let delta = value_diff.mul_div_round(time_since_initial,total_adjustment_time).unwrap();
+            let delta = value_diff
+                .mul_div_round(time_since_initial, total_adjustment_time)
+                .unwrap();
 
             (self.initial_value as i64 + delta) as _
         }
     }
 
-    pub fn set_target(&mut self, current_ts: TimestampT, target_value: ValueT, target_ts: TimestampT) -> Result<(), PoolError> {
+    pub fn set_target(
+        &mut self,
+        current_ts: TimestampT,
+        target_value: ValueT,
+        target_ts: TimestampT,
+    ) -> Result<(), PoolError> {
         if !(MIN_AMP_VALUE..MAX_AMP_VALUE).contains(&target_value) {
             return Err(PoolError::InvalidAmpFactorValue);
         }
@@ -86,10 +92,12 @@ impl AmpFactor {
         if target_ts < current_ts + MIN_ADJUSTMENT_WINDOW {
             return Err(PoolError::InvalidAmpFactorTimestamp);
         }
-        
+
         let initial_value = self.get(current_ts);
-        if (initial_value < target_value && initial_value*MAX_RELATIVE_ADJUSTMENT < target_value) ||
-           (initial_value > target_value && initial_value > target_value*MAX_RELATIVE_ADJUSTMENT) {
+        if (initial_value < target_value && initial_value * MAX_RELATIVE_ADJUSTMENT < target_value)
+            || (initial_value > target_value
+                && initial_value > target_value * MAX_RELATIVE_ADJUSTMENT)
+        {
             return Err(PoolError::InvalidAmpFactorValue);
         }
 
@@ -114,7 +122,7 @@ mod tests {
     #[test]
     fn valid_new_amp_factor() {
         let amp = AmpFactor::default();
-        assert_eq!(amp.target_value,10);
+        assert_eq!(amp.target_value, 10);
     }
 
     #[test]
@@ -126,31 +134,32 @@ mod tests {
 
     #[test]
     fn valid_set_target() {
-
         // change = delta_value * ((curr_ts - init_ts) / delta_ts)
         fn calculate_curve(curr_ts: i64, amp: &AmpFactor) -> u32 {
             let total_val_diff = (amp.target_value - amp.initial_value) as i64;
             let curr_ts_diff = curr_ts - amp.initial_ts as i64;
             let total_ts_diff = (amp.target_ts - amp.initial_ts) as i64;
-            amp.initial_value + total_val_diff.mul_div_round(curr_ts_diff,total_ts_diff).unwrap() as u32
+            amp.initial_value
+                + total_val_diff
+                    .mul_div_round(curr_ts_diff, total_ts_diff)
+                    .unwrap() as u32
         }
 
         let mut amp = AmpFactor::new(10000).unwrap();
 
-        assert_eq!(10000,amp.get(1000));
+        assert_eq!(10000, amp.get(1000));
 
         amp.set_target(20000, 20000, 106400).unwrap();
 
         // Test values between timestamps, 20000 and 106400
         // 11157, 13472, 15787, 18102, 19954
         assert_eq!(10000, amp.get(20000));
-        assert_eq!(calculate_curve(30000,&amp), amp.get(30000));
-        assert_eq!(calculate_curve(50000,&amp), amp.get(50000));
-        assert_eq!(calculate_curve(70000,&amp), amp.get(70000));
-        assert_eq!(calculate_curve(90000,&amp), amp.get(90000));
-        assert_eq!(calculate_curve(106000,&amp), amp.get(106000));
-        assert_eq!(20000,amp.get(106400));
-
+        assert_eq!(calculate_curve(30000, &amp), amp.get(30000));
+        assert_eq!(calculate_curve(50000, &amp), amp.get(50000));
+        assert_eq!(calculate_curve(70000, &amp), amp.get(70000));
+        assert_eq!(calculate_curve(90000, &amp), amp.get(90000));
+        assert_eq!(calculate_curve(106000, &amp), amp.get(106000));
+        assert_eq!(20000, amp.get(106400));
     }
 
     #[test]

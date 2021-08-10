@@ -1,4 +1,5 @@
 use borsh::{BorshDeserialize, BorshSerialize};
+use solana_program::pubkey::Pubkey;
 
 use crate::pool_fee::FeeRepr;
 
@@ -11,37 +12,25 @@ pub enum PoolInstruction<const TOKEN_COUNT: usize> {
         governance_fee: FeeRepr,
     },
     Add {
-
+        deposit_amounts: [u32; TOKEN_COUNT],
+        minimum_mint_amount: u32,
     },
-    Remove {
-
-    },
-    Swap {
-
-    },
+    Remove {},
+    Swap {},
     PrepareFeeChange {
         lp_fee: FeeRepr,
         governance_fee: FeeRepr,
     },
-    EnactFeeChange {
-
-    },
+    EnactFeeChange {},
     PrepareGovernanceTransition {
-
+        upcoming_governance_key: Pubkey,
     },
-    EnactGovernanceTransition {
-
-    },
-    ChangeGovernanceFeeAccounts {
-
-    },
+    ChangeGovernanceFeeAccounts {},
     AdjustAmpFactor {
         target_ts: u64,
         target_value: u32,
     },
-    HaltAmpFactorAdjustment {
-        
-    },
+    HaltAmpFactorAdjustment {},
     SetPaused {
         paused: bool,
     },
