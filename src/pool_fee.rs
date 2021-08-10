@@ -20,6 +20,12 @@ pub struct FeeRepr {
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
 pub struct PoolFee(ValueT);
 
+impl PartialEq for PoolFee {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
 impl PoolFee {
     pub fn new(fee_repr: FeeRepr) -> Result<Self, PoolError> {
         let mut ret = Self::default();
@@ -59,5 +65,38 @@ impl PoolFee {
 
     pub fn apply(&self, amount: u64) -> u64 {
         amount.mul_div_round(self.0 as u64, DECIMALS_DENOMINATOR as u64).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_pool_fee() {
+        // 50% fee
+        let _fee = PoolFee::new(FeeRepr{value: 500000, decimals:6}).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn invalid_set_pool_fee() {
+        // 5% fee
+        let mut fee = PoolFee::new(FeeRepr{value: 500000, decimals:7}).unwrap();
+        fee.set(FeeRepr{value:1000000, decimals:6}).unwrap();
+    }
+
+    #[test]
+    fn apply_fee() {
+        // 0.5% fee
+        let fee = PoolFee::new(FeeRepr{value: 500000, decimals:8}).unwrap();
+        let amount: u64 = 1000000;
+        assert_eq!(5000, fee.apply(amount));
+    }
+    
+    #[test]
+    #[should_panic]
+    fn overflow_value() {
+        let _fee = PoolFee::new(FeeRepr{value: 123456789, decimals:11}).unwrap();
     }
 }

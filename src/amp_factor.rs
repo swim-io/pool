@@ -106,3 +106,65 @@ impl AmpFactor {
         self.target_ts = current_ts;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_new_amp_factor() {
+        let amp = AmpFactor::default();
+        assert_eq!(amp.target_value,10);
+    }
+
+    #[test]
+    #[should_panic]
+    #[warn(unused_variables)]
+    fn invalid_new_amp_factor() {
+        let _amp = AmpFactor::new(9).unwrap();
+    }
+
+    #[test]
+    fn valid_set_target() {
+
+        // change = delta_value * ((curr_ts - init_ts) / delta_ts)
+        fn calculate_curve(curr_ts: i64, amp: &AmpFactor) -> u32 {
+            let total_val_diff = (amp.target_value - amp.initial_value) as i64;
+            let curr_ts_diff = curr_ts - amp.initial_ts as i64;
+            let total_ts_diff = (amp.target_ts - amp.initial_ts) as i64;
+            amp.initial_value + total_val_diff.mul_div_round(curr_ts_diff,total_ts_diff).unwrap() as u32
+        }
+
+        let mut amp = AmpFactor::new(10000).unwrap();
+
+        assert_eq!(10000,amp.get(1000));
+
+        amp.set_target(20000, 20000, 106400).unwrap();
+
+        // Test values between timestamps, 20000 and 106400
+        // 11157, 13472, 15787, 18102, 19954
+        assert_eq!(10000, amp.get(20000));
+        assert_eq!(calculate_curve(30000,&amp), amp.get(30000));
+        assert_eq!(calculate_curve(50000,&amp), amp.get(50000));
+        assert_eq!(calculate_curve(70000,&amp), amp.get(70000));
+        assert_eq!(calculate_curve(90000,&amp), amp.get(90000));
+        assert_eq!(calculate_curve(106000,&amp), amp.get(106000));
+        assert_eq!(20000,amp.get(106400));
+
+    }
+
+    #[test]
+    #[should_panic]
+    fn invalid_set_target() {
+        //Target value set to 20x initial value
+        let mut amp = AmpFactor::new(1000).unwrap();
+        amp.set_target(20000, 20000, 106400).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn invalid_adjustment_window() {
+        let mut amp = AmpFactor::new(10000).unwrap();
+        amp.set_target(20000, 20000, 50000).unwrap();
+    }
+}

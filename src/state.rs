@@ -22,8 +22,10 @@ pub struct Pool<const TOKEN_COUNT: usize> {
     pub governance_key: Pubkey,
     pub governance_fee_key: Pubkey, //are fees minted as LP tokens?
     //pub governance_fee_keys: [Pubkey; TOKEN_COUNT], //or individually?
-    pub prepared_governenace_key: Pubkey,
-    pub governance_action_cooldown: solana_program::clock::UnixTimestamp,
+    pub prepared_governance_key: Pubkey,
+    pub governance_action_deadline: solana_program::clock::UnixTimestamp,
+    pub future_lp_fee: PoolFee,
+    pub future_governance_fee: PoolFee,
 }
 
 impl<const TOKEN_COUNT: usize> Pool<TOKEN_COUNT> {

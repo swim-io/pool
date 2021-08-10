@@ -19,7 +19,7 @@ use solana_program::{
     pubkey::Pubkey,
     sysvar::{
         rent::Rent,
-//		clock::Clock,
+		clock::Clock,
         Sysvar
     },
 };
@@ -42,6 +42,8 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 
+const FEE_CHANGE_DELAY: i64 = 3 * 86400;
+
 pub struct Processor<const TOKEN_COUNT: usize>;
 impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
     pub fn process(
@@ -61,6 +63,18 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             // },
             // PoolInstruction::Swap {..} => {
             // },
+            PoolInstruction::PrepareFeeChange{lp_fee, governance_fee} => {
+                Self::process_prepare_fee_change(lp_fee, governance_fee, program_id, accounts)?;
+            },
+            PoolInstruction::EnactFeeChange{} => {
+                Self::process_enact_fee_change(program_id, accounts)?;
+            },
+            PoolInstruction::AdjustAmpFactor{target_ts, target_value} => {
+                Self::process_adjust_amp_factor(target_ts, target_value, program_id, accounts)?;
+            },
+            PoolInstruction::HaltAmpFactorAdjustment{} => {
+                Self::process_halt_amp_factor_adjustment(program_id, accounts)?;
+            },
             _ => {todo!();}
         }
         Ok(())
@@ -85,7 +99,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             let mut account_info_iter = accounts.iter();
             move || -> Result<&AccountInfo, ProgramError> {
                 let acc = next_account_info(&mut account_info_iter)?;
-                if *acc.key!= Pubkey::default() {
+                if *acc.key != Pubkey::default() {
                     if  keys.contains(acc.key) {
                         return Err(PoolError::DuplicateAccount.into());
                     }
@@ -185,10 +199,152 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             lp_mint_key: lp_mint_account.key.clone(),
             governance_key: governance_account.key.clone(),
             governance_fee_key: governance_fee_account.key.clone(),
-            prepared_governenace_key: Pubkey::default(),
-            governance_action_cooldown: 0,
+            prepared_governance_key: Pubkey::default(),
+            governance_action_deadline: 0,
+            future_lp_fee: PoolFee::default(),
+            future_governance_fee: PoolFee::default(),
         }
             .serialize(&mut *pool_state_account.data.try_borrow_mut().unwrap())
             .or(Err(ProgramError::AccountDataTooSmall))
+    }
+
+
+    // ---------------
+
+    fn process_prepare_fee_change(
+        lp_fee: FeeRepr,
+        governance_fee: FeeRepr,
+        program_id: &Pubkey,
+        accounts: &[AccountInfo]
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let pool_state_account = next_account_info(account_info_iter)?;
+
+        if pool_state_account.owner != program_id {
+            return Err(ProgramError::IllegalOwner);
+        }
+
+        let mut pool = Pool::<TOKEN_COUNT>::deserialize(&mut &**pool_state_account.data.try_borrow_mut().unwrap())?;
+
+        if !pool.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+
+        let governance_account = next_account_info(account_info_iter)?;
+        if *governance_account.key != pool.governance_key {
+            return Err(PoolError::InvalidGovernanceAccount.into())
+        }
+
+        let current_ts: i64 = Clock::get().unwrap().unix_timestamp;
+        
+        pool.future_lp_fee = PoolFee::new(lp_fee)?;
+        pool.future_governance_fee = PoolFee::new(governance_fee)?;
+        pool.governance_action_deadline = current_ts + FEE_CHANGE_DELAY;
+
+        pool.serialize(&mut *pool_state_account.data.try_borrow_mut().unwrap()).or(Err(ProgramError::AccountDataTooSmall))
+    }
+
+    fn process_enact_fee_change(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo]
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let pool_state_account = next_account_info(account_info_iter)?;
+
+        if pool_state_account.owner != program_id {
+            return Err(ProgramError::IllegalOwner);
+        }
+
+        let mut pool = Pool::<TOKEN_COUNT>::deserialize(&mut &**pool_state_account.data.try_borrow_mut().unwrap())?;
+
+        if !pool.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+
+        let governance_account = next_account_info(account_info_iter)?;
+        if *governance_account.key != pool.governance_key {
+            return Err(PoolError::InvalidGovernanceAccount.into())
+        }
+
+        let current_ts: i64 = Clock::get().unwrap().unix_timestamp;
+
+        if pool.governance_action_deadline == 0 {
+            return Err(PoolError::InvalidEnact.into());
+        }
+        if current_ts < pool.governance_action_deadline {
+            return Err(PoolError::InsufficientDelay.into());
+        }
+
+        pool.lp_fee = pool.future_lp_fee;
+        pool.governance_fee = pool.future_governance_fee;
+        pool.governance_action_deadline = 0;
+        pool.future_lp_fee = PoolFee::default();
+        pool.future_governance_fee = PoolFee::default();
+        
+        pool.serialize(&mut *pool_state_account.data.try_borrow_mut().unwrap()).or(Err(ProgramError::AccountDataTooSmall))
+    }
+
+    fn process_adjust_amp_factor(
+        target_ts: u64,
+        target_value: u32,
+        program_id: &Pubkey,
+        accounts: &[AccountInfo]
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let pool_state_account = next_account_info(account_info_iter)?;
+
+        if pool_state_account.owner != program_id {
+            return Err(ProgramError::IllegalOwner);
+        }
+
+        let mut pool = Pool::<TOKEN_COUNT>::deserialize(&mut &**pool_state_account.data.try_borrow_mut().unwrap())?;
+
+        if !pool.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+
+        let governance_account = next_account_info(account_info_iter)?;
+        if *governance_account.key != pool.governance_key {
+            return Err(PoolError::InvalidGovernanceAccount.into())
+        }
+
+        let current_ts: i64 = Clock::get().unwrap().unix_timestamp;
+
+        pool.amp_factor.set_target(current_ts as u64, target_value, target_ts).unwrap();
+        
+        pool.serialize(&mut *pool_state_account.data.try_borrow_mut().unwrap()).unwrap();
+
+        Ok(())
+    }
+
+    fn process_halt_amp_factor_adjustment(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo]
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let pool_state_account = next_account_info(account_info_iter)?;
+
+        if pool_state_account.owner != program_id {
+            return Err(ProgramError::IllegalOwner);
+        }
+
+        let mut pool = Pool::<TOKEN_COUNT>::deserialize(&mut &**pool_state_account.data.try_borrow_mut().unwrap())?;
+
+        if !pool.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+
+        let governance_account = next_account_info(account_info_iter)?;
+        if *governance_account.key != pool.governance_key {
+            return Err(PoolError::InvalidGovernanceAccount.into())
+        }
+
+        let current_ts: i64 = Clock::get().unwrap().unix_timestamp;
+
+        pool.amp_factor.stop_adjustment(current_ts as u64);
+
+        pool.serialize(&mut *pool_state_account.data.try_borrow_mut().unwrap()).unwrap();
+
+        Ok(())
     }
 }

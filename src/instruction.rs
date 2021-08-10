@@ -20,7 +20,8 @@ pub enum PoolInstruction<const TOKEN_COUNT: usize> {
 
     },
     PrepareFeeChange {
-
+        lp_fee: FeeRepr,
+        governance_fee: FeeRepr,
     },
     EnactFeeChange {
 
@@ -35,7 +36,8 @@ pub enum PoolInstruction<const TOKEN_COUNT: usize> {
 
     },
     AdjustAmpFactor {
-
+        target_ts: u64,
+        target_value: u32,
     },
     HaltAmpFactorAdjustment {
         

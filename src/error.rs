@@ -31,6 +31,12 @@ pub enum PoolError {
 	TokenAccountHasDelegate,
 	#[error("Token account's close authority is set")]
 	TokenAccountHasCloseAuthority,
+	#[error("Invalid governance key")]
+	InvalidGovernanceAccount,
+	#[error("Insufficient delay has passed")]
+	InsufficientDelay,
+	#[error("Nothing to enact")]
+	InvalidEnact
 }
 
 impl From<PoolError> for ProgramError {
