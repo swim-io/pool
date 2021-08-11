@@ -12,8 +12,8 @@ pub enum PoolInstruction<const TOKEN_COUNT: usize> {
         governance_fee: FeeRepr,
     },
     Add {
-        deposit_amounts: [u32; TOKEN_COUNT],
-        minimum_mint_amount: u32,
+        deposit_amounts: [u64; TOKEN_COUNT],
+        minimum_mint_amount: u64,
     },
     Remove {},
     Swap {},

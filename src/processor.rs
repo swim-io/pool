@@ -2,6 +2,7 @@ use arrayvec::ArrayVec;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    program::{invoke, invoke_signed},
     program_error::ProgramError,
     program_option::COption,
     program_pack::{IsInitialized, Pack},
@@ -10,7 +11,12 @@ use solana_program::{
 };
 use std::fmt;
 
-use spl_token::{error::TokenError, state::Account as TokenState, state::Mint as MintState};
+use spl_token::{
+    error::TokenError,
+    instruction::{mint_to, transfer},
+    state::Account as TokenState,
+    state::Mint as MintState,
+};
 
 use crate::{
     amp_factor::AmpFactor,
@@ -25,70 +31,6 @@ const FEE_CHANGE_DELAY: i64 = 3 * 86400;
 
 pub struct Processor<const TOKEN_COUNT: usize>;
 impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
-    fn get_account_array<R>(
-        closure: impl FnMut(usize) -> Result<R, ProgramError>,
-    ) -> Result<[R; TOKEN_COUNT], ProgramError>
-    where
-        R: fmt::Debug,
-    {
-        Ok((0..TOKEN_COUNT)
-            .into_iter()
-            .map(closure)
-            .collect::<Result<ArrayVec<_, TOKEN_COUNT>, _>>()?
-            .into_inner()
-            .unwrap())
-    }
-
-    fn check_program_owner_and_unpack<T: Pack + IsInitialized>(
-        packed_acc_info: &AccountInfo,
-    ) -> Result<T, ProgramError> {
-        spl_token::check_program_account(packed_acc_info.owner)?;
-        T::unpack(&packed_acc_info.data.borrow()).or(Err(ProgramError::InvalidAccountData))
-    }
-
-    fn check_and_deserialize_pool_state(
-        pool_account: &AccountInfo,
-        program_id: &Pubkey,
-    ) -> Result<PoolState<TOKEN_COUNT>, ProgramError> {
-        if pool_account.owner != program_id {
-            return Err(ProgramError::IllegalOwner);
-        }
-
-        let pool_state = PoolState::<TOKEN_COUNT>::deserialize(
-            &mut &**pool_account.data.try_borrow_mut().unwrap(),
-        )?;
-
-        if !pool_state.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
-
-        Ok(pool_state)
-    }
-
-    fn serialize_pool(
-        pool_state: &PoolState<TOKEN_COUNT>,
-        pool_account: &AccountInfo,
-    ) -> ProgramResult {
-        pool_state
-            .serialize(&mut *pool_account.data.try_borrow_mut().unwrap())
-            .or(Err(ProgramError::AccountDataTooSmall))
-    }
-
-    fn verify_governance_signature(
-        governance_account: &AccountInfo,
-        pool_state: &PoolState<TOKEN_COUNT>,
-    ) -> ProgramResult {
-        if *governance_account.key != pool_state.governance_key {
-            return Err(PoolError::InvalidGovernanceAccount.into());
-        }
-
-        if !governance_account.is_signer {
-            return Err(ProgramError::MissingRequiredSignature);
-        }
-
-        Ok(())
-    }
-
     pub fn process(
         program_id: &Pubkey,
         accounts: &[AccountInfo],
@@ -169,16 +111,14 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         {
             return Err(ProgramError::AccountNotRentExempt);
         }
-        
+
         match Self::check_and_deserialize_pool_state(&pool_account, &program_id) {
             Err(ProgramError::UninitializedAccount) => (),
             Err(e) => return Err(e),
             Ok(_) => return Err(ProgramError::AccountAlreadyInitialized),
         }
 
-        let authority =
-            Pubkey::create_program_address(&[&pool_account.key.to_bytes(), &[nonce]], program_id)
-                .or(Err(ProgramError::IncorrectProgramId))?;
+        let authority = Self::get_pool_authority(pool_account.key, nonce, program_id)?;
 
         let lp_mint_account = check_duplicate_and_get_next()?;
         let lp_mint_state = Self::check_program_owner_and_unpack::<MintState>(lp_mint_account)?;
@@ -192,8 +132,8 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             return Err(PoolError::MintHasFreezeAuthority.into());
         }
 
-        let token_mint_accounts = Self::get_account_array(|_| check_duplicate_and_get_next())?;
-        let token_accounts = Self::get_account_array(|_| check_duplicate_and_get_next())?;
+        let token_mint_accounts = Self::get_array(|_| check_duplicate_and_get_next())?;
+        let token_accounts = Self::get_array(|_| check_duplicate_and_get_next())?;
 
         for i in 0..TOKEN_COUNT {
             let token_mint_account = token_mint_accounts[i];
@@ -262,8 +202,8 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
     }
 
     fn process_add(
-        deposit_amounts: [u32; TOKEN_COUNT],
-        minimum_mint_amount: u32,
+        deposit_amounts: [u64; TOKEN_COUNT],
+        minimum_mint_amount: u64,
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
@@ -273,29 +213,95 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
         let mut account_info_iter = accounts.iter();
         let pool_account = next_account_info(&mut account_info_iter)?;
-        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
+        let pool_state = Self::check_and_deserialize_pool_state(pool_account, &program_id)?;
 
         if pool_state.is_paused {
             return Err(PoolError::PoolIsPaused.into());
         }
 
+        let user_authority_account = next_account_info(&mut account_info_iter)?;
+        let user_lp_token_account = next_account_info(&mut account_info_iter)?;
+        let user_token_accounts =
+            Self::get_array(|_| Ok(next_account_info(&mut account_info_iter)?))?;
         let pool_token_accounts = {
-            let check_pool_token_account = |i| -> Result<&AccountInfo, ProgramError> {
+            let check_pool_token_account = |i| {
+                // -> Result<&AccountInfo, ProgramError>
                 let pool_token_account = next_account_info(&mut account_info_iter)?;
                 if *pool_token_account.key != pool_state.token_keys[i] {
                     return Err(PoolError::PoolTokenAccountExpected.into());
                 }
                 Ok(pool_token_account)
             };
-            Self::get_account_array(check_pool_token_account)?
+            Self::get_array(check_pool_token_account)?
         };
 
-        let user_token_accounts =
-            Self::get_account_array(|_| Ok(next_account_info(&mut account_info_iter)?))?;
-        
-        todo!();
+        let pool_authority = next_account_info(&mut account_info_iter)?;
+        if *pool_authority.key
+            != Self::get_pool_authority(pool_account.key, pool_state.nonce, program_id)?
+        {
+            return Err(PoolError::InvalidPoolAuthorityAccount.into());
+        }
 
-        Self::serialize_pool(&pool_state, &pool_account)
+        let lp_mint_account = next_account_info(&mut account_info_iter)?;
+        if *lp_mint_account.key != pool_state.lp_mint_key {
+            return Err(PoolError::InvalidMintAccount.into());
+        }
+        let token_program_account = next_account_info(&mut account_info_iter)?;
+        let pool_token_states = Self::get_array(|i| {
+            Self::check_program_owner_and_unpack::<TokenState>(pool_token_accounts[i])
+        })?;
+
+        //check if the pool is currently empty (if one token balance is 0, all token balances must be zero)
+        if pool_token_states[0].amount == 0 && deposit_amounts.iter().any(|amount| *amount == 0) {
+            return Err(PoolError::AddRequiresAllTokens.into());
+        }
+
+        let mint_amount = 0u64; //TODO
+
+        if mint_amount < minimum_mint_amount {
+            return Err(PoolError::SlippageExceeded.into());
+        }
+
+        for i in 0..TOKEN_COUNT {
+            let transfer_ix = transfer(
+                token_program_account.key,
+                &user_token_accounts[i].key,
+                &pool_token_accounts[i].key,
+                &user_authority_account.key,
+                &[],
+                deposit_amounts[i],
+            )?;
+
+            invoke(
+                &transfer_ix,
+                &[
+                    user_token_accounts[i].clone(),
+                    pool_token_accounts[i].clone(),
+                    user_authority_account.clone(),
+                    token_program_account.clone(),
+                ],
+            )?;
+        }
+
+        let mint_ix = mint_to(
+            token_program_account.key,
+            lp_mint_account.key,
+            user_lp_token_account.key,
+            pool_authority.key,
+            &[],
+            mint_amount,
+        )?;
+
+        invoke_signed(
+            &mint_ix,
+            &[
+                lp_mint_account.clone(),
+                user_lp_token_account.clone(),
+                pool_authority.clone(),
+                token_program_account.clone(),
+            ],
+            &[&[&pool_account.key.to_bytes()[..32], &[pool_state.nonce]][..]],
+        )
     }
 
     fn process_prepare_fee_change(
@@ -307,7 +313,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         let account_info_iter = &mut accounts.iter();
         let pool_account = next_account_info(account_info_iter)?;
         let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
-        
+
         Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
 
         let current_ts: i64 = Clock::get().unwrap().unix_timestamp;
@@ -323,7 +329,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         let account_info_iter = &mut accounts.iter();
         let pool_account = next_account_info(account_info_iter)?;
         let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
-        
+
         Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
 
         let current_ts: i64 = Clock::get().unwrap().unix_timestamp;
@@ -353,7 +359,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         let account_info_iter = &mut accounts.iter();
         let pool_account = next_account_info(account_info_iter)?;
         let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
-        
+
         Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
 
         let current_ts: i64 = Clock::get()?.unix_timestamp;
@@ -372,7 +378,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         let account_info_iter = &mut accounts.iter();
         let pool_account = next_account_info(account_info_iter)?;
         let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
-        
+
         Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
 
         let current_ts: i64 = Clock::get()?.unix_timestamp;
@@ -380,5 +386,78 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         pool_state.amp_factor.stop_adjustment(current_ts as u64);
 
         Self::serialize_pool(&pool_state, pool_account)
+    }
+
+    fn get_array<R>(
+        closure: impl FnMut(usize) -> Result<R, ProgramError>,
+    ) -> Result<[R; TOKEN_COUNT], ProgramError>
+    where
+        R: fmt::Debug,
+    {
+        Ok((0..TOKEN_COUNT)
+            .into_iter()
+            .map(closure)
+            .collect::<Result<ArrayVec<_, TOKEN_COUNT>, _>>()?
+            .into_inner()
+            .unwrap())
+    }
+
+    fn get_pool_authority(
+        pool_key: &Pubkey,
+        nonce: u8,
+        program_id: &Pubkey,
+    ) -> Result<Pubkey, ProgramError> {
+        Pubkey::create_program_address(&[&pool_key.to_bytes(), &[nonce]], program_id)
+            .or(Err(ProgramError::IncorrectProgramId))
+    }
+
+    fn check_program_owner_and_unpack<T: Pack + IsInitialized>(
+        account: &AccountInfo,
+    ) -> Result<T, ProgramError> {
+        spl_token::check_program_account(account.owner)?;
+        T::unpack(&account.data.borrow()).or(Err(ProgramError::InvalidAccountData))
+    }
+
+    fn check_and_deserialize_pool_state(
+        pool_account: &AccountInfo,
+        program_id: &Pubkey,
+    ) -> Result<PoolState<TOKEN_COUNT>, ProgramError> {
+        if pool_account.owner != program_id {
+            return Err(ProgramError::IllegalOwner);
+        }
+
+        let pool_state = PoolState::<TOKEN_COUNT>::deserialize(
+            &mut &**pool_account.data.try_borrow_mut().unwrap(),
+        )?;
+
+        if !pool_state.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+
+        Ok(pool_state)
+    }
+
+    fn serialize_pool(
+        pool_state: &PoolState<TOKEN_COUNT>,
+        pool_account: &AccountInfo,
+    ) -> ProgramResult {
+        pool_state
+            .serialize(&mut *pool_account.data.try_borrow_mut().unwrap())
+            .or(Err(ProgramError::AccountDataTooSmall))
+    }
+
+    fn verify_governance_signature(
+        governance_account: &AccountInfo,
+        pool_state: &PoolState<TOKEN_COUNT>,
+    ) -> ProgramResult {
+        if *governance_account.key != pool_state.governance_key {
+            return Err(PoolError::InvalidGovernanceAccount.into());
+        }
+
+        if !governance_account.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        Ok(())
     }
 }

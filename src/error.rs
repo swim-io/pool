@@ -31,9 +31,13 @@ pub enum PoolError {
     TokenAccountHasDelegate,
     #[error("Token account's close authority is set")]
     TokenAccountHasCloseAuthority,
-    #[error("Invalid governance key")]
+    #[error("Invalid governance account")]
     InvalidGovernanceAccount,
-    #[error("Insufficient delay has passed")]
+    #[error("Invalid pool authority account")]
+    InvalidPoolAuthorityAccount,
+    #[error("Invalid mint account")]
+    InvalidMintAccount,
+    #[error("Not enough time has passed since prepare instruction")]
     InsufficientDelay,
     #[error("Nothing to enact")]
     InvalidEnact,
@@ -43,6 +47,8 @@ pub enum PoolError {
     PoolTokenAccountExpected,
     #[error("Instruction exceeds maximum slippage")]
     SlippageExceeded,
+    #[error("Initial add to pool must include all tokens")]
+    AddRequiresAllTokens,
 }
 
 impl From<PoolError> for ProgramError {
