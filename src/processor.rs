@@ -54,19 +54,64 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 accounts,
             ),
             PoolInstruction::Add {
-                deposit_amounts,
-                minimum_mint_amount,
-            } => Self::process_add(deposit_amounts, minimum_mint_amount, program_id, accounts),
-            // PoolInstruction::Remove {..} => {
-            // },
-            // PoolInstruction::Swap {..} => {
-            // },
+                input_amounts,
+                minimum_lp_amount,
+            } => Self::process_add(input_amounts, minimum_lp_amount, program_id, accounts),
+            PoolInstruction::RemoveOneExact {
+                exact_burn_amount,
+                output_token_index,
+                minimum_output_amount,
+            } => Self::process_remove_one_exact(
+                exact_burn_amount,
+                output_token_index,
+                minimum_output_amount,
+                program_id,
+                accounts,
+            ),
+            PoolInstruction::RemoveAllExact {
+                exact_burn_amount,
+                minimum_output_amounts,
+            } => Self::process_remove_all_exact(
+                exact_burn_amount,
+                minimum_output_amounts,
+                program_id,
+                accounts,
+            ),
+            PoolInstruction::RemoveBounded {
+                maximum_burn_amount,
+                output_amounts,
+            } => Self::process_remove_bounded(
+                maximum_burn_amount,
+                output_amounts,
+                program_id,
+                accounts,
+            ),
+            PoolInstruction::Swap {
+                input_amounts,
+                output_token_index,
+                minimum_output_amount,
+            } => Self::process_swap(
+                input_amounts,
+                output_token_index,
+                minimum_output_amount,
+                program_id,
+                accounts,
+            ),
             PoolInstruction::PrepareFeeChange {
                 lp_fee,
                 governance_fee,
             } => Self::process_prepare_fee_change(lp_fee, governance_fee, program_id, accounts),
             PoolInstruction::EnactFeeChange {} => {
                 Self::process_enact_fee_change(program_id, accounts)
+            }
+            PoolInstruction::PrepareGovernanceTransition {
+                upcoming_governance_key,
+            } => Self::process_prepare_governance_transition(upcoming_governance_key),
+            PoolInstruction::EnactGovernanceTransition {} => {
+                Self::process_enact_governance_transition()
+            }
+            PoolInstruction::ChangeGovernanceFeeAccount { governance_fee_key } => {
+                Self::process_change_governance_fee_account(governance_fee_key)
             }
             PoolInstruction::AdjustAmpFactor {
                 target_ts,
@@ -75,9 +120,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             PoolInstruction::HaltAmpFactorAdjustment {} => {
                 Self::process_halt_amp_factor_adjustment(program_id, accounts)
             }
-            _ => {
-                todo!()
-            }
+            PoolInstruction::SetPaused { paused } => Self::process_set_paused(paused),
         }
     }
 
@@ -202,12 +245,12 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
     }
 
     fn process_add(
-        deposit_amounts: [u64; TOKEN_COUNT],
-        minimum_mint_amount: u64,
+        input_amounts: [u64; TOKEN_COUNT],
+        minimum_lp_amount: u64,
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
-        if deposit_amounts.iter().all(|amount| *amount == 0) {
+        if input_amounts.iter().all(|amount| *amount == 0) {
             return Err(ProgramError::InvalidInstructionData); //TODO better error message?
         }
 
@@ -252,13 +295,13 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         })?;
 
         //check if the pool is currently empty (if one token balance is 0, all token balances must be zero)
-        if pool_token_states[0].amount == 0 && deposit_amounts.iter().any(|amount| *amount == 0) {
+        if pool_token_states[0].amount == 0 && input_amounts.iter().any(|amount| *amount == 0) {
             return Err(PoolError::AddRequiresAllTokens.into());
         }
 
         let mint_amount = 0u64; //TODO
 
-        if mint_amount < minimum_mint_amount {
+        if mint_amount < minimum_lp_amount {
             return Err(PoolError::SlippageExceeded.into());
         }
 
@@ -269,7 +312,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 &pool_token_accounts[i].key,
                 &user_authority_account.key,
                 &[],
-                deposit_amounts[i],
+                input_amounts[i],
             )?;
 
             invoke(
@@ -302,6 +345,48 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             ],
             &[&[&pool_account.key.to_bytes()[..32], &[pool_state.nonce]][..]],
         )
+    }
+
+    fn process_remove_one_exact(
+        exact_burn_amount: u64,
+        output_token_index: u8,
+        minimum_output_amount: u64,
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+    ) -> ProgramResult {
+        //TODO
+        Ok(())
+    }
+
+    fn process_remove_all_exact(
+        exact_burn_amount: u64,
+        minimum_output_amounts: [u64; TOKEN_COUNT],
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+    ) -> ProgramResult {
+        //TODO
+        Ok(())
+    }
+
+    fn process_remove_bounded(
+        maximum_burn_amount: u64,
+        output_amounts: [u64; TOKEN_COUNT],
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+    ) -> ProgramResult {
+        //TODO
+        Ok(())
+    }
+
+    fn process_swap(
+        input_amounts: [u64; TOKEN_COUNT],
+        output_token_index: u8,
+        minimum_output_amount: u64,
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+    ) -> ProgramResult {
+        //TODO
+        Ok(())
     }
 
     fn process_prepare_fee_change(
@@ -350,6 +435,21 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         Self::serialize_pool(&pool_state, pool_account)
     }
 
+    fn process_prepare_governance_transition(upcoming_governance_key: Pubkey) -> ProgramResult {
+        //TODO
+        Ok(())
+    }
+
+    fn process_enact_governance_transition() -> ProgramResult {
+        //TODO
+        Ok(())
+    }
+
+    fn process_change_governance_fee_account(governance_fee_key: Pubkey) -> ProgramResult {
+        //TODO
+        Ok(())
+    }
+
     fn process_adjust_amp_factor(
         target_ts: u64,
         target_value: u32,
@@ -386,6 +486,11 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         pool_state.amp_factor.stop_adjustment(current_ts as u64);
 
         Self::serialize_pool(&pool_state, pool_account)
+    }
+
+    fn process_set_paused(paused: bool) -> ProgramResult {
+        //TODO
+        Ok(())
     }
 
     fn get_array<R>(

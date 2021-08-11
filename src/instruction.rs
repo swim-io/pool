@@ -12,11 +12,27 @@ pub enum PoolInstruction<const TOKEN_COUNT: usize> {
         governance_fee: FeeRepr,
     },
     Add {
-        deposit_amounts: [u64; TOKEN_COUNT],
-        minimum_mint_amount: u64,
+        input_amounts: [u64; TOKEN_COUNT],
+        minimum_lp_amount: u64,
     },
-    Remove {},
-    Swap {},
+    RemoveOneExact {
+        exact_burn_amount: u64,
+        output_token_index: u8,
+        minimum_output_amount: u64,
+    },
+    RemoveAllExact {
+        exact_burn_amount: u64,
+        minimum_output_amounts: [u64; TOKEN_COUNT],
+    },
+    RemoveBounded {
+        maximum_burn_amount: u64,
+        output_amounts: [u64; TOKEN_COUNT],
+    },
+    Swap {
+        input_amounts: [u64; TOKEN_COUNT],
+        output_token_index: u8,
+        minimum_output_amount: u64,
+    },
     PrepareFeeChange {
         lp_fee: FeeRepr,
         governance_fee: FeeRepr,
@@ -25,7 +41,10 @@ pub enum PoolInstruction<const TOKEN_COUNT: usize> {
     PrepareGovernanceTransition {
         upcoming_governance_key: Pubkey,
     },
-    ChangeGovernanceFeeAccounts {},
+    EnactGovernanceTransition {},
+    ChangeGovernanceFeeAccount {
+        governance_fee_key: Pubkey,
+    },
     AdjustAmpFactor {
         target_ts: u64,
         target_value: u32,
