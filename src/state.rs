@@ -1,5 +1,8 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
+use solana_program::{
+    clock::UnixTimestamp,
+    pubkey::Pubkey,
+};
 
 use crate::{amp_factor::AmpFactor, pool_fee::PoolFee};
 
@@ -24,10 +27,10 @@ pub struct PoolState<const TOKEN_COUNT: usize> {
     pub governance_key: Pubkey,
     pub governance_fee_key: Pubkey,
     pub prepared_governance_key: Pubkey,
-    pub governance_transition_ts: solana_program::clock::UnixTimestamp,
+    pub governance_transition_ts: UnixTimestamp,
     pub prepared_lp_fee: PoolFee,
     pub prepared_governance_fee: PoolFee,
-    pub fee_transition_ts: solana_program::clock::UnixTimestamp,
+    pub fee_transition_ts: UnixTimestamp,
 }
 
 impl<const TOKEN_COUNT: usize> PoolState<TOKEN_COUNT> {

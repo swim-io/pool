@@ -7,6 +7,7 @@ use solana_program::{
     program_option::COption,
     program_pack::{IsInitialized, Pack},
     pubkey::Pubkey,
+    clock::UnixTimestamp,
     sysvar::{clock::Clock, rent::Rent, Sysvar},
 };
 use std::fmt;
@@ -27,7 +28,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 
-const ENACT_DELAY: i64 = 3 * 86400;
+const ENACT_DELAY: UnixTimestamp = 3 * 86400;
 
 pub struct Processor<const TOKEN_COUNT: usize>;
 impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
@@ -384,7 +385,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
         pool_state.prepared_lp_fee = PoolFee::new(*lp_fee)?;
         pool_state.prepared_governance_fee = PoolFee::new(*governance_fee)?;
-        pool_state.fee_transition_ts = Clock::get()?.unix_timestamp + ENACT_DELAY;
+        pool_state.fee_transition_ts = Self::get_current_ts()? + ENACT_DELAY;
 
         Self::serialize_pool(&pool_state, pool_account)
     }
@@ -403,7 +404,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             return Err(PoolError::InvalidEnact.into());
         }
 
-        if pool_state.fee_transition_ts > Clock::get()?.unix_timestamp {
+        if pool_state.fee_transition_ts > Self::get_current_ts()? {
             return Err(PoolError::InsufficientDelay.into());
         }
 
@@ -428,7 +429,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
 
         pool_state.prepared_governance_key = *upcoming_governance_key;
-        pool_state.governance_transition_ts = Clock::get()?.unix_timestamp + ENACT_DELAY;
+        pool_state.governance_transition_ts = Self::get_current_ts()? + ENACT_DELAY;
 
         Self::serialize_pool(&pool_state, pool_account)
     }
@@ -447,7 +448,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             return Err(PoolError::InvalidEnact.into());
         }
 
-        if pool_state.governance_transition_ts > Clock::get()?.unix_timestamp {
+        if pool_state.governance_transition_ts > Self::get_current_ts()? {
             return Err(PoolError::InsufficientDelay.into());
         }
 
@@ -501,11 +502,9 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
         Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
 
-        let current_ts: i64 = Clock::get()?.unix_timestamp;
-
         pool_state
             .amp_factor
-            .set_target(current_ts as u64, target_value, target_ts)?;
+            .set_target(Self::get_current_ts()? as u64, target_value, target_ts)?;
 
         Self::serialize_pool(&pool_state, pool_account)
     }
@@ -520,9 +519,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
         Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
 
-        let current_ts: i64 = Clock::get()?.unix_timestamp;
-
-        pool_state.amp_factor.stop_adjustment(current_ts as u64);
+        pool_state.amp_factor.stop_adjustment(Self::get_current_ts()? as u64);
 
         Self::serialize_pool(&pool_state, pool_account)
     }
@@ -614,5 +611,11 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         }
 
         Ok(())
+    }
+
+    fn get_current_ts() -> Result<UnixTimestamp, ProgramError> {
+        let current_ts = Clock::get()?.unix_timestamp;
+        assert!(current_ts > 0);
+        Ok(current_ts)
     }
 }
