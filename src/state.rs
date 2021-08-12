@@ -3,6 +3,11 @@ use solana_program::pubkey::Pubkey;
 
 use crate::{amp_factor::AmpFactor, pool_fee::PoolFee};
 
+//TODO arguably, various fields should be Options (e.g. all the prepared_* fields)
+//     the advantage of taking a special value approach is that serialized data
+//     always has the same size (otherwise we'll have to figure out the maximum
+//     size of a serialized PoolState in order to ensure that the pool's state
+//     account has space and sol to be rent exempt in all cases)
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub struct PoolState<const TOKEN_COUNT: usize> {
     pub nonce: u8,
@@ -17,12 +22,12 @@ pub struct PoolState<const TOKEN_COUNT: usize> {
     pub token_keys: [Pubkey; TOKEN_COUNT],
 
     pub governance_key: Pubkey,
-    pub governance_fee_key: Pubkey, //are fees minted as LP tokens?
-    //pub governance_fee_keys: [Pubkey; TOKEN_COUNT], //or individually?
+    pub governance_fee_key: Pubkey,
     pub prepared_governance_key: Pubkey,
-    pub governance_action_deadline: solana_program::clock::UnixTimestamp,
+    pub governance_transition_ts: solana_program::clock::UnixTimestamp,
     pub prepared_lp_fee: PoolFee,
     pub prepared_governance_fee: PoolFee,
+    pub fee_transition_ts: solana_program::clock::UnixTimestamp,
 }
 
 impl<const TOKEN_COUNT: usize> PoolState<TOKEN_COUNT> {

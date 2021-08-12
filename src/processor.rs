@@ -27,7 +27,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 
-const FEE_CHANGE_DELAY: i64 = 3 * 86400;
+const ENACT_DELAY: i64 = 3 * 86400;
 
 pub struct Processor<const TOKEN_COUNT: usize>;
 impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
@@ -45,82 +45,65 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 amp_factor,
                 lp_fee,
                 governance_fee,
-            } => Self::process_init(
-                nonce,
-                amp_factor,
-                lp_fee,
-                governance_fee,
-                program_id,
-                accounts,
-            ),
+            } => Self::process_init(nonce, amp_factor, lp_fee, governance_fee, program_id, accounts),
+
             PoolInstruction::Add {
                 input_amounts,
                 minimum_lp_amount,
             } => Self::process_add(input_amounts, minimum_lp_amount, program_id, accounts),
+
             PoolInstruction::RemoveOneExact {
                 exact_burn_amount,
                 output_token_index,
                 minimum_output_amount,
-            } => Self::process_remove_one_exact(
-                exact_burn_amount,
-                output_token_index,
-                minimum_output_amount,
-                program_id,
-                accounts,
-            ),
+            } => Self::process_remove_one_exact(exact_burn_amount, output_token_index, minimum_output_amount, program_id, accounts),
+
             PoolInstruction::RemoveAllExact {
                 exact_burn_amount,
                 minimum_output_amounts,
-            } => Self::process_remove_all_exact(
-                exact_burn_amount,
-                minimum_output_amounts,
-                program_id,
-                accounts,
-            ),
+            } => Self::process_remove_all_exact(exact_burn_amount, minimum_output_amounts, program_id, accounts),
+
             PoolInstruction::RemoveBounded {
                 maximum_burn_amount,
                 output_amounts,
-            } => Self::process_remove_bounded(
-                maximum_burn_amount,
-                output_amounts,
-                program_id,
-                accounts,
-            ),
+            } => Self::process_remove_bounded(maximum_burn_amount, output_amounts, program_id, accounts),
+
             PoolInstruction::Swap {
                 input_amounts,
                 output_token_index,
                 minimum_output_amount,
-            } => Self::process_swap(
-                input_amounts,
-                output_token_index,
-                minimum_output_amount,
-                program_id,
-                accounts,
-            ),
+            } => Self::process_swap(input_amounts, output_token_index, minimum_output_amount, program_id, accounts),
+
             PoolInstruction::PrepareFeeChange {
                 lp_fee,
                 governance_fee,
-            } => Self::process_prepare_fee_change(lp_fee, governance_fee, program_id, accounts),
-            PoolInstruction::EnactFeeChange {} => {
-                Self::process_enact_fee_change(program_id, accounts)
-            }
+            } => Self::process_prepare_fee_change(&lp_fee, &governance_fee, program_id, accounts),
+
+            PoolInstruction::EnactFeeChange {
+            } => Self::process_enact_fee_change(program_id, accounts),
+            
             PoolInstruction::PrepareGovernanceTransition {
                 upcoming_governance_key,
-            } => Self::process_prepare_governance_transition(upcoming_governance_key),
-            PoolInstruction::EnactGovernanceTransition {} => {
-                Self::process_enact_governance_transition()
-            }
-            PoolInstruction::ChangeGovernanceFeeAccount { governance_fee_key } => {
-                Self::process_change_governance_fee_account(governance_fee_key)
-            }
+            } => Self::process_prepare_governance_transition(&upcoming_governance_key, program_id, accounts),
+
+            PoolInstruction::EnactGovernanceTransition {
+            } => Self::process_enact_governance_transition(program_id, accounts),
+
+            PoolInstruction::ChangeGovernanceFeeAccount {
+                governance_fee_key
+            } => Self::process_change_governance_fee_account(&governance_fee_key, program_id, accounts),
+
             PoolInstruction::AdjustAmpFactor {
                 target_ts,
                 target_value,
             } => Self::process_adjust_amp_factor(target_ts, target_value, program_id, accounts),
-            PoolInstruction::HaltAmpFactorAdjustment {} => {
-                Self::process_halt_amp_factor_adjustment(program_id, accounts)
-            }
-            PoolInstruction::SetPaused { paused } => Self::process_set_paused(paused),
+
+            PoolInstruction::HaltAmpFactorAdjustment {
+            } => Self::process_halt_amp_factor_adjustment(program_id, accounts),
+
+            PoolInstruction::SetPaused {
+                paused
+            } => Self::process_set_paused(paused, program_id, accounts),
         }
     }
 
@@ -148,10 +131,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         };
 
         let pool_account = check_duplicate_and_get_next()?;
-        if !Rent::get()
-            .unwrap()
-            .is_exempt(pool_account.lamports(), pool_account.data_len())
-        {
+        if !Rent::get()?.is_exempt(pool_account.lamports(), pool_account.data_len()) {
             return Err(ProgramError::AccountNotRentExempt);
         }
 
@@ -236,9 +216,10 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 governance_key: governance_account.key.clone(),
                 governance_fee_key: governance_fee_account.key.clone(),
                 prepared_governance_key: Pubkey::default(),
-                governance_action_deadline: 0,
+                governance_transition_ts: 0,
                 prepared_lp_fee: PoolFee::default(),
                 prepared_governance_fee: PoolFee::default(),
+                fee_transition_ts: 0,
             },
             &pool_account,
         )
@@ -390,8 +371,8 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
     }
 
     fn process_prepare_fee_change(
-        lp_fee: FeeRepr,
-        governance_fee: FeeRepr,
+        lp_fee: &FeeRepr,
+        governance_fee: &FeeRepr,
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
@@ -401,53 +382,111 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
         Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
 
-        let current_ts: i64 = Clock::get().unwrap().unix_timestamp;
-
-        pool_state.prepared_lp_fee = PoolFee::new(lp_fee)?;
-        pool_state.prepared_governance_fee = PoolFee::new(governance_fee)?;
-        pool_state.governance_action_deadline = current_ts + FEE_CHANGE_DELAY;
+        pool_state.prepared_lp_fee = PoolFee::new(*lp_fee)?;
+        pool_state.prepared_governance_fee = PoolFee::new(*governance_fee)?;
+        pool_state.fee_transition_ts = Clock::get()?.unix_timestamp + ENACT_DELAY;
 
         Self::serialize_pool(&pool_state, pool_account)
     }
 
-    fn process_enact_fee_change(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    fn process_enact_fee_change(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo]
+    ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let pool_account = next_account_info(account_info_iter)?;
         let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
 
         Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
 
-        let current_ts: i64 = Clock::get().unwrap().unix_timestamp;
-
-        if pool_state.governance_action_deadline == 0 {
+        if pool_state.fee_transition_ts == 0 {
             return Err(PoolError::InvalidEnact.into());
         }
-        if current_ts < pool_state.governance_action_deadline {
+
+        if pool_state.fee_transition_ts > Clock::get()?.unix_timestamp {
             return Err(PoolError::InsufficientDelay.into());
         }
 
         pool_state.lp_fee = pool_state.prepared_lp_fee;
         pool_state.governance_fee = pool_state.prepared_governance_fee;
-        pool_state.governance_action_deadline = 0;
         pool_state.prepared_lp_fee = PoolFee::default();
         pool_state.prepared_governance_fee = PoolFee::default();
+        pool_state.fee_transition_ts = 0;
 
         Self::serialize_pool(&pool_state, pool_account)
     }
 
-    fn process_prepare_governance_transition(upcoming_governance_key: Pubkey) -> ProgramResult {
-        //TODO
-        Ok(())
+    fn process_prepare_governance_transition(
+        upcoming_governance_key: &Pubkey,
+        program_id: &Pubkey,
+        accounts: &[AccountInfo]
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let pool_account = next_account_info(account_info_iter)?;
+        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
+
+        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
+
+        pool_state.prepared_governance_key = *upcoming_governance_key;
+        pool_state.governance_transition_ts = Clock::get()?.unix_timestamp + ENACT_DELAY;
+
+        Self::serialize_pool(&pool_state, pool_account)
     }
 
-    fn process_enact_governance_transition() -> ProgramResult {
-        //TODO
-        Ok(())
+    fn process_enact_governance_transition(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo]
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let pool_account = next_account_info(account_info_iter)?;
+        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
+
+        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
+
+        if pool_state.governance_transition_ts == 0 {
+            return Err(PoolError::InvalidEnact.into());
+        }
+
+        if pool_state.governance_transition_ts > Clock::get()?.unix_timestamp {
+            return Err(PoolError::InsufficientDelay.into());
+        }
+
+        pool_state.governance_key = pool_state.prepared_governance_key;
+        pool_state.prepared_governance_key = Pubkey::default();
+        pool_state.governance_transition_ts = 0;
+
+        Self::serialize_pool(&pool_state, pool_account)
     }
 
-    fn process_change_governance_fee_account(governance_fee_key: Pubkey) -> ProgramResult {
-        //TODO
-        Ok(())
+    fn process_change_governance_fee_account(
+        governance_fee_key: &Pubkey,
+        program_id: &Pubkey,
+        accounts: &[AccountInfo]
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let pool_account = next_account_info(account_info_iter)?;
+        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
+
+        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
+
+        if *governance_fee_key != Pubkey::default() {
+            let governance_fee_account = next_account_info(account_info_iter)?;
+            if *governance_fee_account.key != *governance_fee_key {
+                return Err(PoolError::InvalidGovernanceFeeAccout.into())
+            }
+
+            let governance_fee_state = Self::check_program_owner_and_unpack::<TokenState>(governance_fee_account)?;
+            if governance_fee_state.mint != pool_state.lp_mint_key {
+                return Err(TokenError::MintMismatch.into());
+            }
+        }
+        else if pool_state.governance_fee.get().value == 0 {
+            return Err(PoolError::InvalidGovernanceFeeAccout.into())
+        }
+
+        pool_state.governance_fee_key = *governance_fee_key;
+
+        Self::serialize_pool(&pool_state, pool_account)
     }
 
     fn process_adjust_amp_factor(
@@ -488,9 +527,20 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         Self::serialize_pool(&pool_state, pool_account)
     }
 
-    fn process_set_paused(paused: bool) -> ProgramResult {
-        //TODO
-        Ok(())
+    fn process_set_paused(
+        paused: bool,
+        program_id: &Pubkey,
+        accounts: &[AccountInfo]
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let pool_account = next_account_info(account_info_iter)?;
+        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
+
+        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
+
+        pool_state.is_paused = paused;
+
+        Self::serialize_pool(&pool_state, pool_account)
     }
 
     fn get_array<R>(
@@ -504,7 +554,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             .map(closure)
             .collect::<Result<ArrayVec<_, TOKEN_COUNT>, _>>()?
             .into_inner()
-            .unwrap())
+            .unwrap()) //we can unwrap because we know that there is enough capacity
     }
 
     fn get_pool_authority(

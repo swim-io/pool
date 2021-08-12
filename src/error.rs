@@ -33,6 +33,8 @@ pub enum PoolError {
     TokenAccountHasCloseAuthority,
     #[error("Invalid governance account")]
     InvalidGovernanceAccount,
+    #[error("Invalid governance fee account")]
+    InvalidGovernanceFeeAccout,
     #[error("Invalid pool authority account")]
     InvalidPoolAuthorityAccount,
     #[error("Invalid mint account")]
