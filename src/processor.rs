@@ -329,6 +329,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         )
     }
 
+    #[allow(unused_variables)]
     fn process_remove_one_exact(
         exact_burn_amount: u64,
         output_token_index: u8,
@@ -340,6 +341,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         Ok(())
     }
 
+    #[allow(unused_variables)]
     fn process_remove_all_exact(
         exact_burn_amount: u64,
         minimum_output_amounts: [u64; TOKEN_COUNT],
@@ -350,6 +352,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         Ok(())
     }
 
+    #[allow(unused_variables)]
     fn process_remove_bounded(
         maximum_burn_amount: u64,
         output_amounts: [u64; TOKEN_COUNT],
@@ -360,6 +363,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         Ok(())
     }
 
+    #[allow(unused_variables)]
     fn process_swap(
         input_amounts: [u64; TOKEN_COUNT],
         output_token_index: u8,
