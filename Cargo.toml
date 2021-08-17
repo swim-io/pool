@@ -9,7 +9,8 @@ no-entrypoint = []
 
 [dependencies]
 #solana related dependencies
-solana-program = "1.7.4"
+solana-program = "1.7.10"
+solana-frozen-abi = "1.7.10"
 spl-token = { version = "3.1.1", features = ["no-entrypoint"] }
 
 #serializiation/deserialzation
