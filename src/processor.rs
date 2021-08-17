@@ -23,8 +23,9 @@ use crate::{
     amp_factor::AmpFactor,
     error::PoolError,
     instruction::PoolInstruction,
-    pool_fee::{FeeRepr, PoolFee},
+    pool_fee::PoolFee,
     state::PoolState,
+    decimal::DecimalU64,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 
@@ -110,9 +111,9 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
     fn process_init(
         nonce: u8,
-        amp_factor: u32,
-        lp_fee: FeeRepr,
-        governance_fee: FeeRepr,
+        amp_factor: DecimalU64,
+        lp_fee: DecimalU64,
+        governance_fee: DecimalU64,
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
@@ -188,7 +189,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
         let governance_account = check_duplicate_and_get_next()?;
         let governance_fee_account = check_duplicate_and_get_next()?;
-        if (governance_fee.value != 0 || *governance_fee_account.key != Pubkey::default())
+        if (governance_fee != DecimalU64::zero() || *governance_fee_account.key != Pubkey::default())
             && Self::check_program_owner_and_unpack::<TokenState>(governance_fee_account)?.mint
                 != *lp_mint_account.key
         {
@@ -376,8 +377,8 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
     }
 
     fn process_prepare_fee_change(
-        lp_fee: &FeeRepr,
-        governance_fee: &FeeRepr,
+        lp_fee: &DecimalU64,
+        governance_fee: &DecimalU64,
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
@@ -485,7 +486,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 return Err(TokenError::MintMismatch.into());
             }
         }
-        else if pool_state.governance_fee.get().value == 0 {
+        else if pool_state.governance_fee.get() == DecimalU64::zero() {
             return Err(PoolError::InvalidGovernanceFeeAccout.into())
         }
 
@@ -495,8 +496,8 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
     }
 
     fn process_adjust_amp_factor(
-        target_ts: u64,
-        target_value: u32,
+        target_ts: UnixTimestamp,
+        target_value: DecimalU64,
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
@@ -508,7 +509,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
         pool_state
             .amp_factor
-            .set_target(Self::get_current_ts()? as u64, target_value, target_ts)?;
+            .set_target(Self::get_current_ts()?, target_value, target_ts)?;
 
         Self::serialize_pool(&pool_state, pool_account)
     }
@@ -523,7 +524,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
         Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
 
-        pool_state.amp_factor.stop_adjustment(Self::get_current_ts()? as u64);
+        pool_state.amp_factor.stop_adjustment(Self::get_current_ts()?);
 
         Self::serialize_pool(&pool_state, pool_account)
     }

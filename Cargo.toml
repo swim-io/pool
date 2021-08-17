@@ -10,7 +10,6 @@ no-entrypoint = []
 [dependencies]
 #solana related dependencies
 solana-program = "1.7.10"
-solana-frozen-abi = "1.7.10"
 spl-token = { version = "3.1.1", features = ["no-entrypoint"] }
 
 #serializiation/deserialzation
@@ -19,7 +18,6 @@ borsh-derive = "0.9.1"
 
 #numerics
 #uint = { version = "0.9.1", default-features = false }
-muldiv = "1.0.0"
 
 #error handling
 thiserror = "1.0"

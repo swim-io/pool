@@ -1,23 +1,20 @@
-//this entire module needs refactoring using a viable fixed int implementation that properly handles decimals
-// and provides functionality like mul_div
-
 use borsh::{BorshDeserialize, BorshSerialize};
-use muldiv::MulDiv;
+use solana_program::clock::UnixTimestamp;
+use crate::{
+    error::PoolError,
+    decimal::DecimalU64,
+    decimal::DecimalError,
+};
 
-use crate::error::PoolError;
+pub type TimestampT = UnixTimestamp;
+pub type ValueT = DecimalU64;
 
-pub type TimestampT = u64;
-pub type PublicValueT = u32;
-
-pub const MIN_AMP_VALUE: PublicValueT = 1;
-pub const MAX_AMP_VALUE: PublicValueT = (10 as PublicValueT).pow(6);
+pub const MIN_AMP_VALUE: ValueT = DecimalU64::one();
+//result.unwrap() is not a const function...
+pub const MAX_AMP_VALUE: Result<ValueT, DecimalError> = DecimalU64::new(10u64.pow(6), 0);
 
 pub const MIN_ADJUSTMENT_WINDOW: TimestampT = 60 * 60 * 24;
-pub const MAX_RELATIVE_ADJUSTMENT: PublicValueT = 10;
-
-type PrivateValueT = u64;
-const DECIMALS: u8 = 6;
-const DECIMALS_DENOMINATOR: PrivateValueT = (10 as PrivateValueT).pow(DECIMALS as u32);
+pub const MAX_RELATIVE_ADJUSTMENT: Result<ValueT, DecimalError> = DecimalU64::new(10, 0);
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub struct AmpFactor {
@@ -25,9 +22,9 @@ pub struct AmpFactor {
     // inital_ts <= target_ts
     // MIN_AMP_VALUE <= initial_value <= MAX_AMP_VALUE
     // MIN_AMP_VALUE <= target_value <= MAX_AMP_VALUE
-    initial_value: PrivateValueT,
+    initial_value: ValueT,
     initial_ts: TimestampT,
-    target_value: PrivateValueT,
+    target_value: ValueT,
     target_ts: TimestampT,
 }
 
@@ -38,7 +35,20 @@ impl Default for AmpFactor {
 }
 
 impl AmpFactor {
-    fn get(&self, current_ts: TimestampT) -> PrivateValueT {
+    pub fn new(amp_factor: ValueT) -> Result<AmpFactor, PoolError> {
+        if !(MIN_AMP_VALUE..=MAX_AMP_VALUE.unwrap()).contains(&amp_factor) {
+            Err(PoolError::InvalidAmpFactorValue)
+        } else {
+            Ok(AmpFactor {
+                initial_value: MIN_AMP_VALUE,
+                initial_ts: 0,
+                target_value: amp_factor,
+                target_ts: 0,
+            })
+        }
+    }
+
+    pub fn get(&self, current_ts: TimestampT) -> ValueT {
         if current_ts >= self.target_ts {
             //check if we are inside an adjustment window
             //not in an adjustment window
@@ -60,51 +70,34 @@ impl AmpFactor {
             // the maximum _relative_ change to a factor of 10 (i.e. amp_factor at most do
             // a 10x over a day (not +10, but potentially much more))
 
-            let value_diff = self.target_value as i64 - self.initial_value as i64;
-            let time_since_initial = (current_ts - self.initial_ts) as i64;
-            let total_adjustment_time = (self.target_ts - self.initial_ts) as i64;
+            let value_diff = self.target_value - self.initial_value;
+            let time_since_initial = DecimalU64::new((current_ts - self.initial_ts) as u64,0).unwrap();
+            let total_adjustment_time = DecimalU64::new((self.target_ts - self.initial_ts) as u64, 0).unwrap();
+            let delta = value_diff * (time_since_initial / total_adjustment_time);
 
-            let delta = value_diff
-                .mul_div_round(time_since_initial, total_adjustment_time)
-                .unwrap();
-
-            (self.initial_value as i64 + delta) as _
-        }
-    }
-
-    pub fn new(amp_factor: u32) -> Result<AmpFactor, PoolError> {
-        if !(MIN_AMP_VALUE..=MAX_AMP_VALUE).contains(&amp_factor) {
-            Err(PoolError::InvalidAmpFactorValue)
-        } else {
-            Ok(AmpFactor {
-                initial_value: MIN_AMP_VALUE as PrivateValueT * DECIMALS_DENOMINATOR,
-                initial_ts: 0,
-                target_value: amp_factor as PrivateValueT * DECIMALS_DENOMINATOR,
-                target_ts: 0,
-            })
+            self.initial_value + delta
         }
     }
 
     pub fn set_target(
         &mut self,
         current_ts: TimestampT,
-        target_value: PublicValueT,
+        target_value: ValueT,
         target_ts: TimestampT,
     ) -> Result<(), PoolError> {
-        if !(MIN_AMP_VALUE..=MAX_AMP_VALUE).contains(&target_value) {
+        if !(MIN_AMP_VALUE..=MAX_AMP_VALUE.unwrap()).contains(&target_value) {
             return Err(PoolError::InvalidAmpFactorValue);
         }
-
-        let target_value = (target_value as PrivateValueT) * DECIMALS_DENOMINATOR;
 
         if target_ts < current_ts + MIN_ADJUSTMENT_WINDOW {
             return Err(PoolError::InvalidAmpFactorTimestamp);
         }
 
         let initial_value = self.get(current_ts);
-        if (initial_value < target_value && initial_value * (MAX_RELATIVE_ADJUSTMENT as PrivateValueT) < target_value)
+        if (initial_value < target_value
+            && initial_value * MAX_RELATIVE_ADJUSTMENT.unwrap() < target_value)
             || (initial_value > target_value
-                && initial_value > target_value * MAX_RELATIVE_ADJUSTMENT as PrivateValueT)
+                && initial_value > target_value * MAX_RELATIVE_ADJUSTMENT.unwrap())
         {
             return Err(PoolError::InvalidAmpFactorValue);
         }
@@ -121,58 +114,56 @@ impl AmpFactor {
         self.target_value = self.get(current_ts);
         self.target_ts = current_ts;
     }
-
-    pub fn apply(&self, current_ts: TimestampT, val: u64) -> u64 {
-        val
-            .mul_div_round(self.get(current_ts) as u64, DECIMALS_DENOMINATOR as u64)
-            .unwrap()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn new_u64(value: u64, decimals: u8) -> DecimalU64 {
+        DecimalU64::new(value, decimals).unwrap()
+    }
+
     #[test]
     fn new_amp_factor() {
-        assert!(AmpFactor::new(0).is_err());
-        assert!(AmpFactor::new(MIN_AMP_VALUE-1).is_err());
-        assert!(AmpFactor::new(MAX_AMP_VALUE+1).is_err());
+        assert!(AmpFactor::new(DecimalU64::zero()).is_err());
+        assert!(AmpFactor::new(MIN_AMP_VALUE - 1).is_err());
+        assert!(AmpFactor::new(MAX_AMP_VALUE.unwrap() + 1).is_err());
 
         assert!(AmpFactor::new(MIN_AMP_VALUE).is_ok());
-        assert!(AmpFactor::new(MIN_AMP_VALUE+1).is_ok());
-        assert!(AmpFactor::new((MIN_AMP_VALUE+MAX_AMP_VALUE)/2).is_ok());
-        assert!(AmpFactor::new(MAX_AMP_VALUE-1).is_ok());
-        assert!(AmpFactor::new(MAX_AMP_VALUE).is_ok());
+        assert!(AmpFactor::new(MIN_AMP_VALUE + 1).is_ok());
+        assert!(AmpFactor::new((MIN_AMP_VALUE + MAX_AMP_VALUE.unwrap()) / 2).is_ok());
+        assert!(AmpFactor::new(MAX_AMP_VALUE.unwrap() - 1).is_ok());
+        assert!(AmpFactor::new(MAX_AMP_VALUE.unwrap()).is_ok());
     }
 
     #[test]
     fn valid_set_target() {
-        let mut amp = AmpFactor::new(10000).unwrap();
-        assert_eq!(amp.apply(1, 1), 10000);
-
-        amp.set_target(20000, 20000, 106400).unwrap();
-
-        assert_eq!(amp.apply(20000,1), 10000);
-        assert_eq!(amp.apply(30000,1), 11157);
-        assert_eq!(amp.apply(50000,1), 13472);
-        assert_eq!(amp.apply(70000,1), 15787);
-        assert_eq!(amp.apply(90000,1), 18102);
-        assert_eq!(amp.apply(106400,1), 20000);
+        let mut amp = AmpFactor::new(new_u64(10000,0)).unwrap();
+        assert_eq!(amp.get(1), 10000);
+        
+        amp.set_target(20000, new_u64(20000, 0), 106400).unwrap();
+        
+        assert_eq!(amp.get(20000), 10000);
+        assert_eq!(amp.get(30000), new_u64(11157407407407407407,15));
+        assert_eq!(amp.get(50000), new_u64(13472222222222222222,15));
+        assert_eq!(amp.get(70000), new_u64(15787037037037037037,15));
+        assert_eq!(amp.get(90000), new_u64(18101851851851851851,15));
+        assert_eq!(amp.get(106400), 20000);
     }
 
     #[test]
     #[should_panic]
     fn invalid_set_target() {
         //Target value set to 20x initial value
-        let mut amp = AmpFactor::new(1000).unwrap();
-        amp.set_target(20000, 20000, 106400).unwrap();
+        let mut amp = AmpFactor::new(new_u64(1000,0)).unwrap();
+        amp.set_target(20000, new_u64(20000,0), 106400).unwrap();
     }
 
     #[test]
     #[should_panic]
     fn invalid_adjustment_window() {
-        let mut amp = AmpFactor::new(10000).unwrap();
-        amp.set_target(20000, 20000, 50000).unwrap();
+        let mut amp = AmpFactor::new(new_u64(10000,0)).unwrap();
+        amp.set_target(20000, new_u64(20000,0), 50000).unwrap();
     }
 }

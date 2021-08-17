@@ -1,15 +1,17 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
-
-use crate::pool_fee::FeeRepr;
+use solana_program::{
+    pubkey::Pubkey,
+    clock::UnixTimestamp,
+};
+use crate::decimal::DecimalU64;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub enum PoolInstruction<const TOKEN_COUNT: usize> {
     Init {
         nonce: u8,
-        amp_factor: u32,
-        lp_fee: FeeRepr,
-        governance_fee: FeeRepr,
+        amp_factor: DecimalU64,
+        lp_fee: DecimalU64,
+        governance_fee: DecimalU64,
     },
     Add {
         input_amounts: [u64; TOKEN_COUNT],
@@ -34,8 +36,8 @@ pub enum PoolInstruction<const TOKEN_COUNT: usize> {
         minimum_output_amount: u64,
     },
     PrepareFeeChange {
-        lp_fee: FeeRepr,
-        governance_fee: FeeRepr,
+        lp_fee: DecimalU64,
+        governance_fee: DecimalU64,
     },
     EnactFeeChange {},
     PrepareGovernanceTransition {
@@ -46,8 +48,8 @@ pub enum PoolInstruction<const TOKEN_COUNT: usize> {
         governance_fee_key: Pubkey,
     },
     AdjustAmpFactor {
-        target_ts: u64,
-        target_value: u32,
+        target_ts: UnixTimestamp,
+        target_value: DecimalU64,
     },
     HaltAmpFactorAdjustment {},
     SetPaused {
