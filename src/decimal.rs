@@ -296,8 +296,6 @@ macro_rules! impl_checked_math {(
             };
             let mut value = val1_shifted / val2;
             let mut decimals = self.decimals + shift - other.decimals;
-            println!("{} / {} => shifted: {}, decimals: {} => quotient: {}", val1, val2, val1_shifted, decimals, value);
-
             if KEEP_MAX_DECIMALS {
                 let max_decimals = cmp::max(self.decimals, other.decimals);
                 match decimals.cmp(&max_decimals) {
@@ -314,7 +312,6 @@ macro_rules! impl_checked_math {(
                     _ => ()
                 }
             }
-            println!("shift_to_fit({},{})", value, decimals);
             Self::shift_to_fit::<KEEP_MAX_DECIMALS>(value, decimals)
         }
     }
