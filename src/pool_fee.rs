@@ -23,7 +23,7 @@ impl PoolFee {
 
     pub fn set(&mut self, fee: DecimalU64) -> Result<(), PoolError> {
         let floored_fee = fee.floor(DECIMALS);
-        if fee >= DecimalU64::one() || floored_fee != fee {
+        if fee >= DecimalU64::from(1) || floored_fee != fee {
             //fee has to be less than 100 % and decimals have to fit
             return Err(PoolError::InvalidFeeInput);
         }
