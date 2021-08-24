@@ -14,7 +14,7 @@ use std::fmt;
 
 use spl_token::{
     error::TokenError,
-    instruction::{mint_to, transfer},
+    instruction::{mint_to, burn, transfer},
     state::Account as TokenState,
     state::Mint as MintState,
 };
@@ -22,14 +22,21 @@ use spl_token::{
 use crate::{
     amp_factor::AmpFactor,
     error::PoolError,
-    instruction::PoolInstruction,
+    instruction::{
+        PoolInstruction,
+        DeFiInstruction,
+        GovernanceInstruction,
+    },
     pool_fee::PoolFee,
     state::PoolState,
     decimal::DecimalU64,
+    invariant::Invariant,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 
 const ENACT_DELAY: UnixTimestamp = 3 * 86400;
+
+type AmountT = u64;
 
 pub struct Processor<const TOKEN_COUNT: usize>;
 impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
@@ -38,9 +45,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         accounts: &[AccountInfo],
         instruction_data: &[u8],
     ) -> ProgramResult {
-        let instruction = PoolInstruction::<TOKEN_COUNT>::try_from_slice(instruction_data)?;
-
-        match instruction {
+        match PoolInstruction::<TOKEN_COUNT>::try_from_slice(instruction_data)? {
             //all this boiler-plate could probably be replaced by implementing a procedural macro on PoolInstruction
             PoolInstruction::Init {
                 nonce,
@@ -49,63 +54,13 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 governance_fee,
             } => Self::process_init(nonce, amp_factor, lp_fee, governance_fee, program_id, accounts),
 
-            PoolInstruction::Add {
-                input_amounts,
-                minimum_lp_amount,
-            } => Self::process_add(input_amounts, minimum_lp_amount, program_id, accounts),
+            PoolInstruction::DeFiInstruction(
+                defi_instruction
+            ) => Self::process_defi_instruction(defi_instruction, program_id, accounts),
 
-            PoolInstruction::RemoveOneExact {
-                exact_burn_amount,
-                output_token_index,
-                minimum_output_amount,
-            } => Self::process_remove_one_exact(exact_burn_amount, output_token_index, minimum_output_amount, program_id, accounts),
-
-            PoolInstruction::RemoveAllExact {
-                exact_burn_amount,
-                minimum_output_amounts,
-            } => Self::process_remove_all_exact(exact_burn_amount, minimum_output_amounts, program_id, accounts),
-
-            PoolInstruction::RemoveBounded {
-                maximum_burn_amount,
-                output_amounts,
-            } => Self::process_remove_bounded(maximum_burn_amount, output_amounts, program_id, accounts),
-
-            PoolInstruction::Swap {
-                input_amounts,
-                output_token_index,
-                minimum_output_amount,
-            } => Self::process_swap(input_amounts, output_token_index, minimum_output_amount, program_id, accounts),
-
-            PoolInstruction::PrepareFeeChange {
-                lp_fee,
-                governance_fee,
-            } => Self::process_prepare_fee_change(&lp_fee, &governance_fee, program_id, accounts),
-
-            PoolInstruction::EnactFeeChange {
-            } => Self::process_enact_fee_change(program_id, accounts),
-            
-            PoolInstruction::PrepareGovernanceTransition {
-                upcoming_governance_key,
-            } => Self::process_prepare_governance_transition(&upcoming_governance_key, program_id, accounts),
-
-            PoolInstruction::EnactGovernanceTransition {
-            } => Self::process_enact_governance_transition(program_id, accounts),
-
-            PoolInstruction::ChangeGovernanceFeeAccount {
-                governance_fee_key
-            } => Self::process_change_governance_fee_account(&governance_fee_key, program_id, accounts),
-
-            PoolInstruction::AdjustAmpFactor {
-                target_ts,
-                target_value,
-            } => Self::process_adjust_amp_factor(target_ts, target_value, program_id, accounts),
-
-            PoolInstruction::HaltAmpFactorAdjustment {
-            } => Self::process_halt_amp_factor_adjustment(program_id, accounts),
-
-            PoolInstruction::SetPaused {
-                paused
-            } => Self::process_set_paused(paused, program_id, accounts),
+            PoolInstruction::GovernanceInstruction(
+                governance_instruction
+            ) => Self::process_governance_instruction(governance_instruction, program_id, accounts)
         }
     }
 
@@ -117,6 +72,10 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
+        if lp_fee + governance_fee >= DecimalU64::from(1) {
+            return Err(PoolError::InvalidFeeInput.into());
+        }
+
         let mut check_duplicate_and_get_next = {
             let mut keys: Vec<&Pubkey> = vec![];
             let mut account_info_iter = accounts.iter();
@@ -143,14 +102,14 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             Ok(_) => return Err(ProgramError::AccountAlreadyInitialized),
         }
 
-        let authority = Self::get_pool_authority(pool_account.key, nonce, program_id)?;
+        let pool_authority_account = Self::get_pool_authority(pool_account.key, nonce, program_id)?;
 
         let lp_mint_account = check_duplicate_and_get_next()?;
         let lp_mint_state = Self::check_program_owner_and_unpack::<MintState>(lp_mint_account)?;
         if lp_mint_state.supply != 0 {
             return Err(PoolError::MintHasBalance.into());
         }
-        if COption::Some(authority) != lp_mint_state.mint_authority {
+        if COption::Some(pool_authority_account) != lp_mint_state.mint_authority {
             return Err(PoolError::InvalidMintAuthority.into());
         }
         if lp_mint_state.freeze_authority.is_some() {
@@ -173,7 +132,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             if token_state.mint != *token_mint_account.key {
                 return Err(TokenError::MintMismatch.into());
             }
-            if token_state.owner != authority {
+            if token_state.owner != pool_authority_account {
                 return Err(TokenError::OwnerMismatch.into());
             }
             if token_state.amount != 0 {
@@ -189,7 +148,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
         let governance_account = check_duplicate_and_get_next()?;
         let governance_fee_account = check_duplicate_and_get_next()?;
-        if (governance_fee != DecimalU64::zero() || *governance_fee_account.key != Pubkey::default())
+        if (governance_fee != DecimalU64::from(0) || *governance_fee_account.key != Pubkey::default())
             && Self::check_program_owner_and_unpack::<TokenState>(governance_fee_account)?.mint
                 != *lp_mint_account.key
         {
@@ -227,28 +186,23 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         )
     }
 
-    fn process_add(
-        input_amounts: [u64; TOKEN_COUNT],
-        minimum_lp_amount: u64,
+    fn process_defi_instruction(
+        defi_instruction: DeFiInstruction::<TOKEN_COUNT>,
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
-        if input_amounts.iter().all(|amount| *amount == 0) {
-            return Err(ProgramError::InvalidInstructionData); //TODO better error message?
-        }
-
         let mut account_info_iter = accounts.iter();
         let pool_account = next_account_info(&mut account_info_iter)?;
         let pool_state = Self::check_and_deserialize_pool_state(pool_account, &program_id)?;
 
-        if pool_state.is_paused {
+        if pool_state.is_paused && !matches!(defi_instruction, DeFiInstruction::RemoveUniform{..}) {
             return Err(PoolError::PoolIsPaused.into());
         }
 
-        let user_authority_account = next_account_info(&mut account_info_iter)?;
-        let user_lp_token_account = next_account_info(&mut account_info_iter)?;
-        let user_token_accounts =
-            Self::get_array(|_| Ok(next_account_info(&mut account_info_iter)?))?;
+        let pool_authority_account = next_account_info(&mut account_info_iter)?;
+        if *pool_authority_account.key != Self::get_pool_authority(pool_account.key, pool_state.nonce, program_id)? {
+            return Err(PoolError::InvalidPoolAuthorityAccount.into());
+        }
         let pool_token_accounts = {
             let check_pool_token_account = |i| {
                 // -> Result<&AccountInfo, ProgramError>
@@ -261,303 +215,444 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             Self::get_array(check_pool_token_account)?
         };
 
-        let pool_authority = next_account_info(&mut account_info_iter)?;
-        if *pool_authority.key
-            != Self::get_pool_authority(pool_account.key, pool_state.nonce, program_id)?
-        {
-            return Err(PoolError::InvalidPoolAuthorityAccount.into());
-        }
+        let pool_balances = Self::get_array(|i| {
+            Ok(Self::check_program_owner_and_unpack::<TokenState>(pool_token_accounts[i])?.amount)
+        })?;
 
         let lp_mint_account = next_account_info(&mut account_info_iter)?;
         if *lp_mint_account.key != pool_state.lp_mint_key {
             return Err(PoolError::InvalidMintAccount.into());
         }
+        let lp_total_supply = Self::check_program_owner_and_unpack::<MintState>(lp_mint_account)?.supply;
+        let governance_fee_account = next_account_info(&mut account_info_iter)?;
+        if *governance_fee_account.key != pool_state.governance_fee_key {
+            return Err(PoolError::InvalidGovernanceFeeAccout.into());
+        }
+
+        let user_authority_account = next_account_info(&mut account_info_iter)?;
+        let user_token_accounts = Self::get_array(|_| Ok(next_account_info(&mut account_info_iter)?))?;
         let token_program_account = next_account_info(&mut account_info_iter)?;
-        let pool_token_states = Self::get_array(|i| {
-            Self::check_program_owner_and_unpack::<TokenState>(pool_token_accounts[i])
-        })?;
 
-        //check if the pool is currently empty (if one token balance is 0, all token balances must be zero)
-        if pool_token_states[0].amount == 0 && input_amounts.iter().any(|amount| *amount == 0) {
-            return Err(PoolError::AddRequiresAllTokens.into());
-        }
+        let govnernace_mint_amount = match defi_instruction {
+            DeFiInstruction::Add {
+                input_amounts,
+                minimum_mint_amount,
+            } => {
+                if input_amounts.iter().all(|amount| *amount == 0) {
+                    return Err(ProgramError::InvalidInstructionData);
+                }
 
-        let mint_amount = 0u64; //TODO
+                //check if the pool is currently empty
+                if lp_total_supply == 0 && input_amounts.iter().any(|amount| *amount == 0) {
+                    return Err(PoolError::AddRequiresAllTokens.into());
+                }
 
-        if mint_amount < minimum_lp_amount {
-            return Err(PoolError::SlippageExceeded.into());
-        }
+                let user_lp_token_account = next_account_info(&mut account_info_iter)?;
+        
+                let (mint_amount, govnernace_mint_amount) = Invariant::<TOKEN_COUNT>::add(
+                    &input_amounts,
+                    &pool_balances,
+                    pool_state.amp_factor.get(Self::get_current_ts()?),
+                    pool_state.lp_fee.get(),
+                    pool_state.governance_fee.get(),
+                    lp_total_supply
+                );
+        
+                if mint_amount < minimum_mint_amount {
+                    return Err(PoolError::OutsideSpecifiedLimits.into());
+                }
+        
+                for i in 0..TOKEN_COUNT {
+                    if input_amounts[i] > 0 {
+                        Self::transfer_token(
+                            user_token_accounts[i],
+                            pool_token_accounts[i],
+                            input_amounts[i],
+                            user_authority_account,
+                            token_program_account
+                        )?;
+                    }
+                }
+        
+                Self::mint_token(
+                    lp_mint_account,
+                    user_lp_token_account,
+                    mint_amount,
+                    pool_authority_account,
+                    token_program_account,
+                    pool_account,
+                    pool_state.nonce
+                )?;
 
-        for i in 0..TOKEN_COUNT {
-            let transfer_ix = transfer(
-                token_program_account.key,
-                &user_token_accounts[i].key,
-                &pool_token_accounts[i].key,
-                &user_authority_account.key,
-                &[],
-                input_amounts[i],
-            )?;
+                govnernace_mint_amount
+            },
 
-            invoke(
-                &transfer_ix,
-                &[
-                    user_token_accounts[i].clone(),
-                    pool_token_accounts[i].clone(),
-                    user_authority_account.clone(),
-                    token_program_account.clone(),
-                ],
-            )?;
-        }
+            DeFiInstruction::RemoveUniform {
+                exact_burn_amount,
+                minimum_output_amounts,
+            } => {
+                if exact_burn_amount == 0 {
+                    return Err(ProgramError::InvalidInstructionData);
+                }
 
-        let mint_ix = mint_to(
-            token_program_account.key,
-            lp_mint_account.key,
-            user_lp_token_account.key,
-            pool_authority.key,
-            &[],
-            mint_amount,
-        )?;
+                let user_lp_token_account = next_account_info(&mut account_info_iter)?;
+                let user_share = DecimalU64::from(exact_burn_amount)/lp_total_supply;
+        
+                for i in 0..TOKEN_COUNT {
+                    let output_amount = (pool_balances[i] * user_share).trunc();
+                    if output_amount < minimum_output_amounts[i] {
+                        return Err(PoolError::OutsideSpecifiedLimits.into())
+                    }
+                    Self::transfer_pool_token(
+                        pool_token_accounts[i],
+                        user_token_accounts[i],
+                        output_amount,
+                        pool_authority_account,
+                        token_program_account,
+                        pool_account,
+                        pool_state.nonce
+                    )?;
+                }
+        
+                Self::burn_token(
+                    user_lp_token_account,
+                    lp_mint_account,
+                    exact_burn_amount,
+                    user_authority_account,
+                    token_program_account
+                )?;
 
-        invoke_signed(
-            &mint_ix,
-            &[
-                lp_mint_account.clone(),
-                user_lp_token_account.clone(),
-                pool_authority.clone(),
-                token_program_account.clone(),
-            ],
-            &[&[&pool_account.key.to_bytes()[..32], &[pool_state.nonce]][..]],
-        )
-    }
-
-    #[allow(unused_variables)]
-    fn process_remove_one_exact(
-        exact_burn_amount: u64,
-        output_token_index: u8,
-        minimum_output_amount: u64,
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-    ) -> ProgramResult {
-        //TODO
-        Ok(())
-    }
-
-    #[allow(unused_variables)]
-    fn process_remove_all_exact(
-        exact_burn_amount: u64,
-        minimum_output_amounts: [u64; TOKEN_COUNT],
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-    ) -> ProgramResult {
-        //TODO
-        Ok(())
-    }
-
-    #[allow(unused_variables)]
-    fn process_remove_bounded(
-        maximum_burn_amount: u64,
-        output_amounts: [u64; TOKEN_COUNT],
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-    ) -> ProgramResult {
-        //TODO
-        Ok(())
-    }
-
-    #[allow(unused_variables)]
-    fn process_swap(
-        input_amounts: [u64; TOKEN_COUNT],
-        output_token_index: u8,
-        minimum_output_amount: u64,
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-    ) -> ProgramResult {
-        //TODO
-        Ok(())
-    }
-
-    fn process_prepare_fee_change(
-        lp_fee: &DecimalU64,
-        governance_fee: &DecimalU64,
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-    ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let pool_account = next_account_info(account_info_iter)?;
-        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
-
-        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
-
-        pool_state.prepared_lp_fee = PoolFee::new(*lp_fee)?;
-        pool_state.prepared_governance_fee = PoolFee::new(*governance_fee)?;
-        pool_state.fee_transition_ts = Self::get_current_ts()? + ENACT_DELAY;
-
-        Self::serialize_pool(&pool_state, pool_account)
-    }
-
-    fn process_enact_fee_change(
-        program_id: &Pubkey,
-        accounts: &[AccountInfo]
-    ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let pool_account = next_account_info(account_info_iter)?;
-        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
-
-        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
-
-        if pool_state.fee_transition_ts == 0 {
-            return Err(PoolError::InvalidEnact.into());
-        }
-
-        if pool_state.fee_transition_ts > Self::get_current_ts()? {
-            return Err(PoolError::InsufficientDelay.into());
-        }
-
-        pool_state.lp_fee = pool_state.prepared_lp_fee;
-        pool_state.governance_fee = pool_state.prepared_governance_fee;
-        pool_state.prepared_lp_fee = PoolFee::default();
-        pool_state.prepared_governance_fee = PoolFee::default();
-        pool_state.fee_transition_ts = 0;
-
-        Self::serialize_pool(&pool_state, pool_account)
-    }
-
-    fn process_prepare_governance_transition(
-        upcoming_governance_key: &Pubkey,
-        program_id: &Pubkey,
-        accounts: &[AccountInfo]
-    ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let pool_account = next_account_info(account_info_iter)?;
-        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
-
-        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
-
-        pool_state.prepared_governance_key = *upcoming_governance_key;
-        pool_state.governance_transition_ts = Self::get_current_ts()? + ENACT_DELAY;
-
-        Self::serialize_pool(&pool_state, pool_account)
-    }
-
-    fn process_enact_governance_transition(
-        program_id: &Pubkey,
-        accounts: &[AccountInfo]
-    ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let pool_account = next_account_info(account_info_iter)?;
-        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
-
-        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
-
-        if pool_state.governance_transition_ts == 0 {
-            return Err(PoolError::InvalidEnact.into());
-        }
-
-        if pool_state.governance_transition_ts > Self::get_current_ts()? {
-            return Err(PoolError::InsufficientDelay.into());
-        }
-
-        pool_state.governance_key = pool_state.prepared_governance_key;
-        pool_state.prepared_governance_key = Pubkey::default();
-        pool_state.governance_transition_ts = 0;
-
-        Self::serialize_pool(&pool_state, pool_account)
-    }
-
-    fn process_change_governance_fee_account(
-        governance_fee_key: &Pubkey,
-        program_id: &Pubkey,
-        accounts: &[AccountInfo]
-    ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let pool_account = next_account_info(account_info_iter)?;
-        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
-
-        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
-
-        if *governance_fee_key != Pubkey::default() {
-            let governance_fee_account = next_account_info(account_info_iter)?;
-            if *governance_fee_account.key != *governance_fee_key {
-                return Err(PoolError::InvalidGovernanceFeeAccout.into())
+                0
             }
 
-            let governance_fee_state = Self::check_program_owner_and_unpack::<TokenState>(governance_fee_account)?;
-            if governance_fee_state.mint != pool_state.lp_mint_key {
-                return Err(TokenError::MintMismatch.into());
+            DeFiInstruction::SwapExactInput {
+                exact_input_amounts,
+                output_token_index,
+                minimum_output_amount,
+            } => {
+                let output_token_index = output_token_index as usize;
+                if exact_input_amounts.iter().all(|amount| *amount == 0) ||
+                   output_token_index >= TOKEN_COUNT ||
+                   exact_input_amounts[output_token_index] != 0 {
+                    return Err(ProgramError::InvalidInstructionData);
+                }
+
+                let (output_amount, govnernace_mint_amount) = Invariant::<TOKEN_COUNT>::swap_exact_input(
+                    &exact_input_amounts,
+                    output_token_index,
+                    &pool_balances,
+                    pool_state.amp_factor.get(Self::get_current_ts()?),
+                    pool_state.lp_fee.get(),
+                    pool_state.governance_fee.get(),
+                    lp_total_supply
+                );
+
+                if output_amount < minimum_output_amount {
+                    return Err(PoolError::OutsideSpecifiedLimits.into());
+                }
+
+                for i in 0..TOKEN_COUNT {
+                    if exact_input_amounts[i] > 0 {
+                        Self::transfer_token(
+                            user_token_accounts[i],
+                            pool_token_accounts[i],
+                            exact_input_amounts[i],
+                            user_authority_account,
+                            token_program_account
+                        )?;
+                    }
+                }
+
+                Self::transfer_pool_token(
+                    pool_token_accounts[output_token_index],
+                    user_token_accounts[output_token_index],
+                    output_amount,
+                    pool_authority_account,
+                    token_program_account,
+                    pool_account,
+                    pool_state.nonce
+                )?;
+
+                govnernace_mint_amount
+            },
+
+            DeFiInstruction::SwapExactOutput {
+                maximum_input_amount,
+                input_token_index,
+                exact_output_amounts,
+            } => {
+                let input_token_index = input_token_index as usize;
+
+                if exact_output_amounts.iter().all(|amount| *amount == 0) ||
+                   input_token_index >= TOKEN_COUNT ||
+                   exact_output_amounts[input_token_index] != 0 ||
+                   exact_output_amounts.iter().zip(pool_balances.iter()).any(
+                       |(output_amount, pool_balance)| *output_amount >= *pool_balance) {
+                    return Err(ProgramError::InvalidInstructionData);
+                }
+
+                let (input_amount, govnernace_mint_amount) = Invariant::<TOKEN_COUNT>::swap_exact_output(
+                    input_token_index,
+                    &exact_output_amounts,
+                    &pool_balances,
+                    pool_state.amp_factor.get(Self::get_current_ts()?),
+                    pool_state.lp_fee.get(),
+                    pool_state.governance_fee.get(),
+                    lp_total_supply
+                );
+
+                if input_amount > maximum_input_amount {
+                    return Err(PoolError::OutsideSpecifiedLimits.into());
+                }
+
+                Self::transfer_token(
+                    user_token_accounts[input_token_index],
+                    pool_token_accounts[input_token_index],
+                    input_amount,
+                    user_authority_account,
+                    token_program_account
+                )?;
+
+                for i in 0..TOKEN_COUNT {
+                    if exact_output_amounts[i] > 0 {
+                        Self::transfer_pool_token(
+                            pool_token_accounts[i],
+                            user_token_accounts[i],
+                            exact_output_amounts[i],
+                            pool_authority_account,
+                            token_program_account,
+                            pool_account,
+                            pool_state.nonce
+                        )?;
+                    }
+                }
+
+                govnernace_mint_amount
+            },
+
+            DeFiInstruction::RemoveExactBurn {
+                exact_burn_amount,
+                output_token_index,
+                minimum_output_amount,
+            } => {
+                let output_token_index = output_token_index as usize;
+                if output_token_index >= TOKEN_COUNT ||
+                    exact_burn_amount == 0 {
+                    return Err(ProgramError::InvalidInstructionData);
+                }
+
+                let user_lp_token_account = next_account_info(&mut account_info_iter)?;
+
+                let (output_amount, govnernace_mint_amount) = Invariant::<TOKEN_COUNT>::remove_exact_burn(
+                    exact_burn_amount,
+                    output_token_index,
+                    &pool_balances,
+                    pool_state.amp_factor.get(Self::get_current_ts()?),
+                    pool_state.lp_fee.get(),
+                    pool_state.governance_fee.get(),
+                    lp_total_supply
+                );
+
+                if output_amount < minimum_output_amount {
+                    return Err(PoolError::OutsideSpecifiedLimits.into());
+                }
+
+                Self::burn_token(
+                    user_lp_token_account,
+                    lp_mint_account,
+                    exact_burn_amount,
+                    user_authority_account,
+                    token_program_account
+                )?;
+
+                Self::transfer_pool_token(
+                    pool_token_accounts[output_token_index],
+                    user_token_accounts[output_token_index],
+                    output_amount,
+                    pool_authority_account,
+                    token_program_account,
+                    pool_account,
+                    pool_state.nonce
+                )?;
+
+                govnernace_mint_amount
+            },
+
+            DeFiInstruction::RemoveExactOutput {
+                maximum_burn_amount,
+                exact_output_amounts,
+            } => {
+                if exact_output_amounts.iter().all(|amount| *amount == 0) ||
+                    maximum_burn_amount == 0 ||
+                    exact_output_amounts.iter().zip(pool_balances.iter()).any(
+                        |(output_amount, pool_balance)| *output_amount >= *pool_balance) {
+                    return Err(ProgramError::InvalidInstructionData);
+                }
+
+                let user_lp_token_account = next_account_info(&mut account_info_iter)?;
+
+                let (burn_amount, govnernace_mint_amount) = Invariant::<TOKEN_COUNT>::remove_exact_output(
+                    &exact_output_amounts,
+                    &pool_balances,
+                    pool_state.amp_factor.get(Self::get_current_ts()?),
+                    pool_state.lp_fee.get(),
+                    pool_state.governance_fee.get(),
+                    lp_total_supply
+                );
+
+                if burn_amount > maximum_burn_amount {
+                    return Err(PoolError::OutsideSpecifiedLimits.into());
+                }
+
+                Self::burn_token(
+                    user_lp_token_account,
+                    lp_mint_account,
+                    burn_amount,
+                    user_authority_account,
+                    token_program_account
+                )?;
+
+                for i in 0..TOKEN_COUNT {
+                    if exact_output_amounts[i] > 0 {
+                        Self::transfer_pool_token(
+                            pool_token_accounts[i],
+                            user_token_accounts[i],
+                            exact_output_amounts[i],
+                            pool_authority_account,
+                            token_program_account,
+                            pool_account,
+                            pool_state.nonce
+                        )?;
+                    }
+                }
+
+                govnernace_mint_amount
+            },
+        };
+
+        if govnernace_mint_amount > 0 {
+            Self::mint_token(
+                lp_mint_account,
+                governance_fee_account,
+                govnernace_mint_amount,
+                pool_authority_account,
+                token_program_account,
+                pool_account,
+                pool_state.nonce
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn process_governance_instruction(
+        governance_instruction: GovernanceInstruction::<TOKEN_COUNT>,
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let pool_account = next_account_info(account_info_iter)?;
+        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
+
+        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
+
+        match governance_instruction {
+            GovernanceInstruction::PrepareFeeChange {
+                lp_fee,
+                governance_fee,
+            } => {
+                if lp_fee + governance_fee >= DecimalU64::from(1) {
+                    return Err(PoolError::InvalidFeeInput.into());
+                }
+
+                pool_state.prepared_lp_fee = PoolFee::new(lp_fee)?;
+                pool_state.prepared_governance_fee = PoolFee::new(governance_fee)?;
+                pool_state.fee_transition_ts = Self::get_current_ts()? + ENACT_DELAY;
+            },
+
+            GovernanceInstruction::EnactFeeChange {
+            } => {
+                if pool_state.fee_transition_ts == 0 {
+                    return Err(PoolError::InvalidEnact.into());
+                }
+        
+                if pool_state.fee_transition_ts > Self::get_current_ts()? {
+                    return Err(PoolError::InsufficientDelay.into());
+                }
+        
+                pool_state.lp_fee = pool_state.prepared_lp_fee;
+                pool_state.governance_fee = pool_state.prepared_governance_fee;
+                pool_state.prepared_lp_fee = PoolFee::default();
+                pool_state.prepared_governance_fee = PoolFee::default();
+                pool_state.fee_transition_ts = 0;
+            },
+            
+            GovernanceInstruction::PrepareGovernanceTransition {
+                upcoming_governance_key,
+            } => {
+                pool_state.prepared_governance_key = upcoming_governance_key;
+                pool_state.governance_transition_ts = Self::get_current_ts()? + ENACT_DELAY;
+            },
+
+            GovernanceInstruction::EnactGovernanceTransition {
+            } => {
+                if pool_state.governance_transition_ts == 0 {
+                    return Err(PoolError::InvalidEnact.into());
+                }
+        
+                if pool_state.governance_transition_ts > Self::get_current_ts()? {
+                    return Err(PoolError::InsufficientDelay.into());
+                }
+        
+                pool_state.governance_key = pool_state.prepared_governance_key;
+                pool_state.prepared_governance_key = Pubkey::default();
+                pool_state.governance_transition_ts = 0;
+            },
+
+            GovernanceInstruction::ChangeGovernanceFeeAccount {
+                governance_fee_key
+            } => {
+                if governance_fee_key != Pubkey::default() {
+                    let governance_fee_account = next_account_info(account_info_iter)?;
+                    if *governance_fee_account.key != governance_fee_key {
+                        return Err(PoolError::InvalidGovernanceFeeAccout.into())
+                    }
+        
+                    let governance_fee_state = Self::check_program_owner_and_unpack::<TokenState>(governance_fee_account)?;
+                    if governance_fee_state.mint != pool_state.lp_mint_key {
+                        return Err(TokenError::MintMismatch.into());
+                    }
+                }
+                else if pool_state.governance_fee.get() == DecimalU64::from(0) {
+                    return Err(PoolError::InvalidGovernanceFeeAccout.into())
+                }
+        
+                pool_state.governance_fee_key = governance_fee_key;
+            },
+
+            GovernanceInstruction::AdjustAmpFactor {
+                target_ts,
+                target_value,
+            } => {
+                pool_state.amp_factor.set_target(Self::get_current_ts()?, target_value, target_ts)?;
+            }
+
+            GovernanceInstruction::HaltAmpFactorAdjustment {
+            } => {
+                pool_state.amp_factor.stop_adjustment(Self::get_current_ts()?);
+            },
+
+            GovernanceInstruction::SetPaused {
+                paused
+            } => {
+                pool_state.is_paused = paused;
             }
         }
-        else if pool_state.governance_fee.get() == DecimalU64::zero() {
-            return Err(PoolError::InvalidGovernanceFeeAccout.into())
-        }
-
-        pool_state.governance_fee_key = *governance_fee_key;
 
         Self::serialize_pool(&pool_state, pool_account)
     }
 
-    fn process_adjust_amp_factor(
-        target_ts: UnixTimestamp,
-        target_value: DecimalU64,
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-    ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let pool_account = next_account_info(account_info_iter)?;
-        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
-
-        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
-
-        pool_state
-            .amp_factor
-            .set_target(Self::get_current_ts()?, target_value, target_ts)?;
-
-        Self::serialize_pool(&pool_state, pool_account)
-    }
-
-    fn process_halt_amp_factor_adjustment(
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-    ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let pool_account = next_account_info(account_info_iter)?;
-        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
-
-        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
-
-        pool_state.amp_factor.stop_adjustment(Self::get_current_ts()?);
-
-        Self::serialize_pool(&pool_state, pool_account)
-    }
-
-    fn process_set_paused(
-        paused: bool,
-        program_id: &Pubkey,
-        accounts: &[AccountInfo]
-    ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let pool_account = next_account_info(account_info_iter)?;
-        let mut pool_state = Self::check_and_deserialize_pool_state(&pool_account, &program_id)?;
-
-        Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
-
-        pool_state.is_paused = paused;
-
-        Self::serialize_pool(&pool_state, pool_account)
-    }
-
-    fn get_array<R>(
-        closure: impl FnMut(usize) -> Result<R, ProgramError>,
-    ) -> Result<[R; TOKEN_COUNT], ProgramError>
-    where
-        R: fmt::Debug,
-    {
-        Ok((0..TOKEN_COUNT)
-            .into_iter()
-            .map(closure)
-            .collect::<Result<ArrayVec<_, TOKEN_COUNT>, _>>()?
-            .into_inner()
-            .unwrap()) //we can unwrap because we know that there is enough capacity
-    }
+    // -------------------------------- Helper Functions --------------------------------
 
     fn get_pool_authority(
         pool_key: &Pubkey,
@@ -618,9 +713,137 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         Ok(())
     }
 
+    fn transfer_token<'a>(
+        sender_account: &AccountInfo<'a>,
+        recipient_account: &AccountInfo<'a>,
+        amount: AmountT,
+        authority_account: &AccountInfo<'a>,
+        token_program_account: &AccountInfo<'a>,
+    ) -> ProgramResult {
+        let transfer_ix = transfer(
+            token_program_account.key,
+            &sender_account.key,
+            &recipient_account.key,
+            &authority_account.key,
+            &[],
+            amount,
+        )?;
+
+        invoke(
+            &transfer_ix,
+            &[
+                sender_account.clone(),
+                recipient_account.clone(),
+                authority_account.clone(),
+                token_program_account.clone(),
+            ],
+        )
+    }
+
+    fn transfer_pool_token<'a>(
+        pool_token_account: &AccountInfo<'a>,
+        recipient_account: &AccountInfo<'a>,
+        amount: AmountT,
+        pool_authority_account: &AccountInfo<'a>,
+        token_program_account: &AccountInfo<'a>,
+        pool_account: &AccountInfo,
+        nonce: u8,
+    ) -> ProgramResult {
+        let transfer_ix = transfer(
+            token_program_account.key,
+            &pool_token_account.key,
+            &recipient_account.key,
+            &pool_authority_account.key,
+            &[],
+            amount,
+        )?;
+
+        invoke_signed(
+            &transfer_ix,
+            &[
+                pool_token_account.clone(),
+                recipient_account.clone(),
+                pool_authority_account.clone(),
+                token_program_account.clone(),
+            ],
+            &[&[&pool_account.key.to_bytes()[..32], &[nonce]][..]],
+        )
+    }
+
+    fn mint_token<'a>(
+        lp_mint_account: &AccountInfo<'a>,
+        recipient_account: &AccountInfo<'a>,
+        mint_amount: AmountT,
+        pool_authority_account: &AccountInfo<'a>,
+        token_program_account: &AccountInfo<'a>,
+        pool_account: &AccountInfo,
+        nonce: u8,
+    ) -> ProgramResult {
+        let mint_ix = mint_to(
+            token_program_account.key,
+            lp_mint_account.key,
+            recipient_account.key,
+            pool_authority_account.key,
+            &[],
+            mint_amount,
+        )?;
+
+        invoke_signed(
+            &mint_ix,
+            &[
+                lp_mint_account.clone(),
+                recipient_account.clone(),
+                pool_authority_account.clone(),
+                token_program_account.clone(),
+            ],
+            &[&[&pool_account.key.to_bytes()[..32], &[nonce]][..]],
+        )
+    }
+
+    pub fn burn_token<'a>(
+        lp_account: &AccountInfo<'a>,
+        lp_mint_account: &AccountInfo<'a>,
+        burn_amount: AmountT,
+        lp_authority: &AccountInfo<'a>,
+        token_program_account: &AccountInfo<'a>,
+    ) -> Result<(), ProgramError> {
+        let burn_ix = burn(
+            token_program_account.key,
+            lp_account.key,
+            lp_mint_account.key,
+            lp_authority.key,
+            &[],
+            burn_amount,
+        )?;
+
+        invoke(
+            &burn_ix,
+            &[
+                lp_account.clone(),
+                lp_mint_account.clone(),
+                lp_authority.clone(),
+                token_program_account.clone(),
+            ],
+        )
+    }
+
     fn get_current_ts() -> Result<UnixTimestamp, ProgramError> {
         let current_ts = Clock::get()?.unix_timestamp;
         assert!(current_ts > 0);
         Ok(current_ts)
+    }
+
+    fn get_array<R>(
+        closure: impl FnMut(usize) -> Result<R, ProgramError>,
+    ) -> Result<[R; TOKEN_COUNT], ProgramError>
+    where
+        R: fmt::Debug,
+    {
+        Ok((0..TOKEN_COUNT)
+            .into_iter()
+            .map(closure)
+            .collect::<Result<ArrayVec<_, TOKEN_COUNT>, _>>()?
+            .into_inner()
+            .unwrap()) //we can unwrap because we know that there is enough capacity
     }
 }

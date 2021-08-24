@@ -5,39 +5,57 @@ use solana_program::{
 };
 use crate::decimal::DecimalU64;
 
+type AmountT = u64;
+type DecT = DecimalU64;
+
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub enum PoolInstruction<const TOKEN_COUNT: usize> {
     Init {
         nonce: u8,
-        amp_factor: DecimalU64,
-        lp_fee: DecimalU64,
-        governance_fee: DecimalU64,
+        amp_factor: DecT,
+        lp_fee: DecT,
+        governance_fee: DecT,
     },
+    DeFiInstruction(DeFiInstruction::<TOKEN_COUNT>),
+    GovernanceInstruction(GovernanceInstruction::<TOKEN_COUNT>)
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
+pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     Add {
-        input_amounts: [u64; TOKEN_COUNT],
-        minimum_lp_amount: u64,
+        input_amounts: [AmountT; TOKEN_COUNT],
+        minimum_mint_amount: AmountT,
     },
-    RemoveOneExact {
-        exact_burn_amount: u64,
+    SwapExactInput {
+        exact_input_amounts: [AmountT; TOKEN_COUNT],
         output_token_index: u8,
-        minimum_output_amount: u64,
+        minimum_output_amount: AmountT,
     },
-    RemoveAllExact {
-        exact_burn_amount: u64,
-        minimum_output_amounts: [u64; TOKEN_COUNT],
+    SwapExactOutput {
+        maximum_input_amount: AmountT,
+        input_token_index: u8,
+        exact_output_amounts: [AmountT; TOKEN_COUNT],
     },
-    RemoveBounded {
-        maximum_burn_amount: u64,
-        output_amounts: [u64; TOKEN_COUNT],
+    RemoveUniform {
+        exact_burn_amount: AmountT,
+        minimum_output_amounts: [AmountT; TOKEN_COUNT],
     },
-    Swap {
-        input_amounts: [u64; TOKEN_COUNT],
+    RemoveExactBurn {
+        exact_burn_amount: AmountT,
         output_token_index: u8,
-        minimum_output_amount: u64,
+        minimum_output_amount: AmountT,
     },
+    RemoveExactOutput {
+        maximum_burn_amount: AmountT,
+        exact_output_amounts: [AmountT; TOKEN_COUNT],
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
+pub enum GovernanceInstruction<const TOKEN_COUNT: usize> {
     PrepareFeeChange {
-        lp_fee: DecimalU64,
-        governance_fee: DecimalU64,
+        lp_fee: DecT,
+        governance_fee: DecT,
     },
     EnactFeeChange {},
     PrepareGovernanceTransition {
@@ -49,10 +67,10 @@ pub enum PoolInstruction<const TOKEN_COUNT: usize> {
     },
     AdjustAmpFactor {
         target_ts: UnixTimestamp,
-        target_value: DecimalU64,
+        target_value: DecT,
     },
     HaltAmpFactorAdjustment {},
     SetPaused {
         paused: bool,
-    },
+    }
 }

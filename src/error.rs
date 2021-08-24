@@ -47,8 +47,8 @@ pub enum PoolError {
     PoolIsPaused,
     #[error("Expected a token account that belongs to the pool")]
     PoolTokenAccountExpected,
-    #[error("Instruction exceeds maximum slippage")]
-    SlippageExceeded,
+    #[error("The instruction could not be completed within the specified limits")]
+    OutsideSpecifiedLimits,
     #[error("Initial add to pool must include all tokens")]
     AddRequiresAllTokens,
 }
