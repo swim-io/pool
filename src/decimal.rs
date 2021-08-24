@@ -325,7 +325,6 @@ macro_rules! unsigned_decimal {(
         fn cmp(&self, other: &Self) -> Ordering {
             let cmp = self.trunc().cmp(&other.trunc());
             match cmp {
-                //TODO BUGGY! can't compare fracts - need to multiply to correct decimals!
                 Ordering::Equal => {
                     match self.decimals.cmp(&other.decimals) {
                         Ordering::Equal => self.fract().cmp(&other.fract()),
