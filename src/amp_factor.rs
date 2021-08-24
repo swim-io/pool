@@ -109,11 +109,6 @@ impl AmpFactor {
 
         Ok(())
     }
-
-    pub fn stop_adjustment(&mut self, current_ts: TimestampT) {
-        self.target_value = self.get(current_ts);
-        self.target_ts = current_ts;
-    }
 }
 
 #[cfg(test)]

@@ -637,11 +637,6 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 pool_state.amp_factor.set_target(Self::get_current_ts()?, target_value, target_ts)?;
             }
 
-            GovernanceInstruction::HaltAmpFactorAdjustment {
-            } => {
-                pool_state.amp_factor.stop_adjustment(Self::get_current_ts()?);
-            },
-
             GovernanceInstruction::SetPaused {
                 paused
             } => {

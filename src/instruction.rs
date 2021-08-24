@@ -69,7 +69,6 @@ pub enum GovernanceInstruction<const TOKEN_COUNT: usize> {
         target_ts: UnixTimestamp,
         target_value: DecT,
     },
-    HaltAmpFactorAdjustment {},
     SetPaused {
         paused: bool,
     }
