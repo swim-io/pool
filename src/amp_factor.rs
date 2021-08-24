@@ -9,9 +9,9 @@ use crate::{
 pub type TimestampT = UnixTimestamp;
 pub type ValueT = DecimalU64;
 
-pub const MIN_AMP_VALUE: ValueT = DecimalU64::one();
 //result.unwrap() is not a const function...
-pub const MAX_AMP_VALUE: Result<ValueT, DecimalError> = DecimalU64::new(10u64.pow(6), 0);
+pub const MIN_AMP_VALUE: ValueT = DecimalU64::const_from(1);
+pub const MAX_AMP_VALUE: ValueT = DecimalU64::const_from(10u64.pow(6));
 
 pub const MIN_ADJUSTMENT_WINDOW: TimestampT = 60 * 60 * 24;
 pub const MAX_RELATIVE_ADJUSTMENT: Result<ValueT, DecimalError> = DecimalU64::new(10, 0);
@@ -36,7 +36,7 @@ impl Default for AmpFactor {
 
 impl AmpFactor {
     pub fn new(amp_factor: ValueT) -> Result<AmpFactor, PoolError> {
-        if !(MIN_AMP_VALUE..=MAX_AMP_VALUE.unwrap()).contains(&amp_factor) {
+        if !(MIN_AMP_VALUE..=MAX_AMP_VALUE).contains(&amp_factor) {
             Err(PoolError::InvalidAmpFactorValue)
         } else {
             Ok(AmpFactor {
@@ -85,7 +85,7 @@ impl AmpFactor {
         target_value: ValueT,
         target_ts: TimestampT,
     ) -> Result<(), PoolError> {
-        if !(MIN_AMP_VALUE..=MAX_AMP_VALUE.unwrap()).contains(&target_value) {
+        if !(MIN_AMP_VALUE..=MAX_AMP_VALUE).contains(&target_value) {
             return Err(PoolError::InvalidAmpFactorValue);
         }
 
@@ -126,15 +126,15 @@ mod tests {
 
     #[test]
     fn new_amp_factor() {
-        assert!(AmpFactor::new(DecimalU64::zero()).is_err());
+        assert!(AmpFactor::new(DecimalU64::from(0)).is_err());
         assert!(AmpFactor::new(MIN_AMP_VALUE - 1).is_err());
-        assert!(AmpFactor::new(MAX_AMP_VALUE.unwrap() + 1).is_err());
+        assert!(AmpFactor::new(MAX_AMP_VALUE + 1).is_err());
 
         assert!(AmpFactor::new(MIN_AMP_VALUE).is_ok());
         assert!(AmpFactor::new(MIN_AMP_VALUE + 1).is_ok());
-        assert!(AmpFactor::new((MIN_AMP_VALUE + MAX_AMP_VALUE.unwrap()) / 2).is_ok());
-        assert!(AmpFactor::new(MAX_AMP_VALUE.unwrap() - 1).is_ok());
-        assert!(AmpFactor::new(MAX_AMP_VALUE.unwrap()).is_ok());
+        assert!(AmpFactor::new((MIN_AMP_VALUE + MAX_AMP_VALUE) / 2).is_ok());
+        assert!(AmpFactor::new(MAX_AMP_VALUE - 1).is_ok());
+        assert!(AmpFactor::new(MAX_AMP_VALUE).is_ok());
     }
 
     #[test]
