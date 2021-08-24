@@ -15,6 +15,7 @@ use std::{
     io,
     cmp, cmp::{PartialEq, Eq, PartialOrd, Ord, Ordering},
     ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div, DivAssign},
+    convert::TryFrom,
     fmt, fmt::{Display, Formatter},
     iter::{Sum, Product},
 };
@@ -25,6 +26,8 @@ use thiserror::Error;
 pub enum DecimalError {
     #[error("Maximum decimals exceeded")]
     MaxDecimalsExceeded,
+    #[error("Conversion error")]
+    ConversionError
 }
 
 const fn ten_to_the(exp: u8) -> u128 {
@@ -167,12 +170,9 @@ macro_rules! unsigned_decimal {(
             Ok(Self{value, decimals})
         }
 
-        pub const fn zero() -> Self {
-            Self{value: 0, decimals: 0}
-        }
-
-        pub const fn one() -> Self {
-            Self{value: 1, decimals: 0}
+        //workaround because From trait's from function isn't const...
+        pub const fn const_from(value: $value_type) -> Self {
+            Self{value, decimals: 0}
         }
 
         pub const fn get_raw(&self) -> $value_type {
@@ -254,12 +254,13 @@ macro_rules! unsigned_decimal {(
 
     impl Display for $name {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            let fract = self.normalize().fract();
+            let normalized = self.normalize();
+            let fract = normalized.fract();
             if fract == 0 {
                 write!(f, "{}", self.trunc())
             }
             else {
-                write!(f, "{}.{}", self.trunc(), fract)
+                write!(f, "{}.{:0decimals$}", self.trunc(), fract, decimals = normalized.decimals as usize)
             }
         }
     }
@@ -377,7 +378,7 @@ macro_rules! unsigned_decimal {(
     impl Sum for $name {
         fn sum<I>(iter: I) -> Self
             where I: Iterator<Item = Self> {
-            iter.fold(Self::zero(), |accumulator, it| accumulator + it)
+            iter.fold(Self::from(0), |accumulator, it| accumulator + it)
         }
     }
 
@@ -458,7 +459,7 @@ macro_rules! unsigned_decimal {(
     impl Product for $name {
         fn product<I>(iter: I) -> Self
             where I: Iterator<Item = Self> {
-            iter.fold(Self::one(), |accumulator, it| accumulator * it)
+            iter.fold(Self::from(1), |accumulator, it| accumulator * it)
         }
     }
 
@@ -599,6 +600,14 @@ impl From<$name> for $larger_name {
     }
 }
 
+impl TryFrom<$larger_name> for $name {
+    type Error = DecimalError;
+
+    fn try_from(v: $larger_name) -> Result<Self, Self::Error> {
+        Self::shift_to_fit(v.get_raw(), v.get_decimals()).ok_or(DecimalError::ConversionError)
+    }
+}
+
 }}
 
 unsigned_decimal! {DecimalU128, u128, 128, 38}
@@ -627,6 +636,23 @@ impl DecimalU128 {
         }
     }
 
+    fn fix_fractional_decimal_excess(mut value: u128, mut decimals: u8) -> Self {
+        if let Some(shift) = decimals.checked_sub(Self::MAX_DECIMALS) {
+            //check required to prevent index overrun in ten_to_the
+            if shift > Self::MAX_DECIMALS {
+                return Self::from(0);
+            }
+            value /= ten_to_the(shift);
+            decimals = Self::MAX_DECIMALS;
+        }
+        
+        if value == 0 {
+            decimals = 0;
+        }
+
+        Self{value, decimals}
+    }
+
     pub fn checked_add(self, other: Self) -> Option<Self> {
         
         let (val_1, val_2, decimals) = Self::equalize_decimals(self, other);
@@ -649,11 +675,70 @@ impl DecimalU128 {
         }
     }
 
-    pub fn checked_mul(self, _other: Self) -> Option<Self> {
-        todo!();
-        //shift both factors just enough so that their product fits in u128
+    //TODO only 64 bit precision!
+    pub fn checked_mul(self, other: Self) -> Option<Self> {
+        //extra handling to prevent retrieving oom for 0 value
+        if self.value == 0 || other.value == 0 {
+            return Some(Self::from(0));
+        }
+        let v1 = self.normalize();
+        let v2 = other.normalize();
+
+        let v1_oom = Self::get_order_of_magnitude(v1.value);
+        let v2_oom = Self::get_order_of_magnitude(v2.value);
+
+        let full_precision = v1_oom + v2_oom;
+        let full_decimals = v1.decimals + v2.decimals;
+
+        if full_precision <= Self::MAX_DECIMALS {
+            //guaranteed fit
+            return Some(Self::fix_fractional_decimal_excess(v1.value * v2.value, full_decimals));
+        }
+
+        if full_precision > Self::MAX_DECIMALS + full_decimals + 2 {
+            //guaranteed overflow
+            return None;
+        }
+
+        let excess_oom = full_precision - (Self::MAX_DECIMALS + 1);
+        let (fewer_oom, mut fewer_val,more_oom, mut more_val) =
+            if v1_oom < v2_oom {(v1_oom, self.value, v2_oom, other.value)}
+            else {(v2_oom, other.value, v1_oom, self.value)};
+        
+        let oom_diff = more_oom - fewer_oom;
+        if excess_oom <= oom_diff {
+            more_val /= ten_to_the(excess_oom);
+        }
+        else {
+            let split_excess = excess_oom - oom_diff;
+            fewer_val /= ten_to_the((split_excess+1)/2);
+            more_val /= ten_to_the(oom_diff + split_excess/2);
+        }
+
+        let mut decimals = full_decimals - excess_oom;
+        let product = match more_val.checked_mul(fewer_val) {
+            Some(value) => value,
+            None => {
+                if decimals == 0 {
+                    return None;
+                }
+                decimals -= 1;
+                match (more_val/10).checked_mul(fewer_val){
+                    Some(value) => value,
+                    None => {
+                        if decimals == 0 {
+                            return None;
+                        }
+                        decimals -= 1;
+                        (more_val/100) * fewer_val
+                    }
+                }
+            }
+        };
+        Some(Self::fix_fractional_decimal_excess(product, decimals))
     }
 
+    //TODO only 64 bit precision! implement a fast division method ( https://en.wikipedia.org/wiki/Division_algorithm#Fast_division_methods )
     pub fn checked_div(self, other: Self) -> Option<Self> {
         if other.value == 0 {
             return None;
@@ -669,35 +754,15 @@ impl DecimalU128 {
         //this ensures the greatest possible precision after the division
         let num_upshift = Self::get_unused_decimals(self.value);
 
-        let mut decimals = match (self.decimals + num_upshift + denom_downshift).checked_sub(other.decimals) {
-            None => {return None;},
-            Some(v) => v
-        };
+        let decimals = (self.decimals + num_upshift + denom_downshift).checked_sub(other.decimals)?;
 
         let numerator = self.value * ten_to_the(num_upshift);
         let denominator = other.value / ten_to_the(denom_downshift);
-        let mut value = numerator / denominator;
+        let value = numerator / denominator;
 
         //TODO by more intelligently calculating denom_downshift and num_upshift,
-        //     one can get rid of this subsequent adjustment code and value and decimals
-        //     can lose the mut modifier
-        match decimals.checked_sub(Self::MAX_DECIMALS) {
-            Some(final_shift) => {
-                if final_shift > Self::MAX_DECIMALS {
-                    return Some(Self::zero());
-                }
-                value /= ten_to_the(final_shift);
-                decimals = Self::MAX_DECIMALS;
-            },
-            None => ()
-        }
-        
-        if value == 0 {
-            Some(Self::zero())
-        }
-        else {
-            Some(Self{value, decimals})
-        }
+        //     one can get rid of this final adjustment
+        Some(Self::fix_fractional_decimal_excess(value, decimals))
     }
 }
 
@@ -744,13 +809,23 @@ mod tests {
     }
 
     #[test]
+    fn u128_mul() {
+        let new_u128 = |value, decimals| DecimalU128::new(value, decimals).unwrap();
+        assert_eq!(DecimalU128::from(1)            * DecimalU128::from(1)       , DecimalU128::from(1));
+        assert_eq!(new_u128(u128::MAX,0)           * new_u128(1,1)              , new_u128(u128::MAX,1));
+        assert_eq!(new_u128(u128::MAX,0).checked_mul(new_u128(10,0))            , None);
+        // assert_eq!(new_u128(u128::MAX,38)          * new_u128(10u128.pow(10)+1,0) , new_u128(u128::MAX,28));
+        // assert_eq!(new_u128(10u128.pow(10),0)      * new_u128(10u128.pow(10),0) , new_u128(10u128.pow(20),0));
+    }
+
+    #[test]
     fn u128_div() {
         let new_u128 = |value, decimals| DecimalU128::new(value, decimals).unwrap();
-        assert_eq!(DecimalU128::from(u128::MAX) / DecimalU128::from(u128::MAX), DecimalU128::one());
+        assert_eq!(DecimalU128::from(u128::MAX) / DecimalU128::from(u128::MAX), DecimalU128::from(1));
         assert!(new_u128(u128::MAX,0).checked_div(new_u128(u128::MAX,38)).is_none());
         assert_eq!(new_u128(u128::MAX,38) / new_u128(u128::MAX,0), new_u128(1, 38));
-        assert_eq!(new_u128(u128::MAX,38) / new_u128(u128::MAX,38), DecimalU128::one());
-        assert_eq!(new_u128(1,38) / new_u128(u128::MAX,0), DecimalU128::zero());
+        assert_eq!(new_u128(u128::MAX,38) / new_u128(u128::MAX,38), DecimalU128::from(1));
+        assert_eq!(new_u128(1,38) / new_u128(u128::MAX,0), DecimalU128::from(0));
         assert!(new_u128(u128::MAX,0).checked_div(new_u128(1,1)).is_none());
     }
 
