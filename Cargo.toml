@@ -6,6 +6,7 @@ edition = "2018"
 
 [features]
 no-entrypoint = []
+test-bpf = []
 
 [dependencies]
 #solana related dependencies
@@ -31,3 +32,6 @@ arrayvec = "0.7.1"
 [dev-dependencies]
 solana-program-test = "1.7.4"
 solana-sdk = "1.7.4"
+
+[lib]
+crate-type = ["cdylib", "lib"]
