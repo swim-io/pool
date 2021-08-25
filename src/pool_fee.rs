@@ -1,63 +1,75 @@
 //naming: pool_fee to distinguish from other fees (such as Solana's fee sysvar)
 
+use crate::{
+    error::PoolError,
+    decimal::DecimalU64,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
-use muldiv::MulDiv;
-use crate::error::PoolError;
 
 //fees are stored with a resolution of one hundredth of a basis point, i.e. 10^-6
 const DECIMALS: u8 = 6;
 //10^(DECIMALS+2) has to fit into ValueT
 pub type ValueT = u32;
-const DECIMALS_DENOMINATOR: ValueT = (10 as ValueT).pow(DECIMALS as u32);
-
-#[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
-//used to abstract away the decimals that Fees uses to store rates internally
-pub struct FeeRepr {
-    pub value: ValueT,
-    pub decimals: u8,
-}
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
 pub struct PoolFee(ValueT);
 
 impl PoolFee {
-    pub fn new(fee_repr: FeeRepr) -> Result<Self, PoolError> {
+    pub fn new(fee: DecimalU64) -> Result<Self, PoolError> {
         let mut ret = Self::default();
-        ret.set(fee_repr)?;
+        ret.set(fee)?;
         Ok(ret)
     }
 
-    pub fn set(& mut self, fee_repr: FeeRepr) -> Result<(), PoolError> {
-        self.0 = if fee_repr.value > 0 {
-            if fee_repr.value / (10 as ValueT).checked_pow(fee_repr.decimals as u32).ok_or(PoolError::InvalidFeeInput)? > 0 {
-                //fee has to be less than 100 %
-                return Err(PoolError::InvalidFeeInput);
-            }
-    
-            if fee_repr.decimals > DECIMALS {
-                //if the passed in decimals are larger than what we can represent internally
-                // then those digits better be zero
-                let denominator = (10 as ValueT).pow((fee_repr.decimals - DECIMALS) as u32);
-                if fee_repr.value % denominator != 0 {
-                    return Err(PoolError::InvalidFeeInput);
-                }
-                fee_repr.value / denominator
-            }
-            else {
-                fee_repr.value * (10 as ValueT).pow((DECIMALS - fee_repr.decimals) as u32)
-            }
+    pub fn set(&mut self, fee: DecimalU64) -> Result<(), PoolError> {
+        let floored_fee = fee.floor(DECIMALS);
+        if fee >= DecimalU64::from(1) || floored_fee != fee {
+            //fee has to be less than 100 % and decimals have to fit
+            return Err(PoolError::InvalidFeeInput);
         }
-        else {
-            0
-        };
+        
+        self.0 = floored_fee.get_raw() as u32;
+
         Ok(())
     }
 
-    pub fn get(&self) -> FeeRepr {
-        FeeRepr{value: self.0, decimals: DECIMALS}
+    pub fn get(&self) -> DecimalU64 {
+        DecimalU64::new(self.0 as u64, DECIMALS).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn new_u64(value: u64, decimals: u8) -> DecimalU64 {
+        DecimalU64::new(value, decimals).unwrap()
     }
 
-    pub fn apply(&self, amount: u64) -> u64 {
-        amount.mul_div_round(self.0 as u64, DECIMALS_DENOMINATOR as u64).unwrap()
+    #[test]
+    fn new_pool_fee() {
+        // 50% fee
+        let _fee = PoolFee::new( new_u64(500000, 6)).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn invalid_set_pool_fee() {
+        let mut fee = PoolFee::default();
+        fee.set(new_u64(1000000, 6)).unwrap();
+    }
+
+    #[test]
+    fn get_fee() {
+        // 0.5% fee
+        let fee_value = new_u64( 500000, 8);
+        let fee = PoolFee::new(fee_value).unwrap();
+        assert_eq!(fee.get(), fee_value.floor(DECIMALS));
+    }
+
+    #[test]
+    #[should_panic]
+    fn overflow_value() {
+        let _fee = PoolFee::new(new_u64( 123456789, 11)).unwrap();
     }
 }
