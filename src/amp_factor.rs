@@ -1,4 +1,4 @@
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize, BorshSchema};
 use solana_program::clock::UnixTimestamp;
 use crate::{
     error::PoolError,
@@ -16,7 +16,7 @@ pub const MAX_AMP_VALUE: ValueT = DecimalU64::const_from(10u64.pow(6));
 pub const MIN_ADJUSTMENT_WINDOW: TimestampT = 60 * 60 * 24;
 pub const MAX_RELATIVE_ADJUSTMENT: Result<ValueT, DecimalError> = DecimalU64::new(10, 0);
 
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, BorshSchema, Debug)]
 pub struct AmpFactor {
     //invariants:
     // inital_ts <= target_ts

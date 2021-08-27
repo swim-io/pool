@@ -4,14 +4,14 @@ use crate::{
     error::PoolError,
     decimal::DecimalU64,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize, BorshSchema};
 
 //fees are stored with a resolution of one hundredth of a basis point, i.e. 10^-6
 const DECIMALS: u8 = 6;
 //10^(DECIMALS+2) has to fit into ValueT
 pub type ValueT = u32;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
+#[derive(BorshSerialize, BorshDeserialize, BorshSchema, Debug, Default)]
 pub struct PoolFee(ValueT);
 
 impl PoolFee {

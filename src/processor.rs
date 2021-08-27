@@ -90,8 +90,9 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 Ok(acc)
             }
         };
-
+        use solana_program::msg;
         let pool_account = check_duplicate_and_get_next()?;
+        msg!("[DEV] checking if pool is large enought to be rent exempt");
         if !Rent::get()?.is_exempt(pool_account.lamports(), pool_account.data_len()) {
             return Err(ProgramError::AccountNotRentExempt);
         }
