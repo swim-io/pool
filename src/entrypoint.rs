@@ -3,7 +3,7 @@ use solana_program::{
     account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, msg, pubkey::Pubkey,
 };
 
-const TOKEN_COUNT: usize = 4; //TODO find a proper way to set/configure this
+pub const TOKEN_COUNT: usize = 4; //TODO find a proper way to set/configure this
 
 entrypoint!(process_instruction);
 pub fn process_instruction<'a>(
