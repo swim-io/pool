@@ -1,4 +1,4 @@
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize, BorshSchema};
 use solana_program::{
     clock::UnixTimestamp,
     pubkey::Pubkey,
@@ -11,7 +11,7 @@ use crate::{amp_factor::AmpFactor, pool_fee::PoolFee};
 //     always has the same size (otherwise we'll have to figure out the maximum
 //     size of a serialized PoolState in order to ensure that the pool's state
 //     account has space and sol to be rent exempt in all cases)
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, BorshSchema, Debug)]
 pub struct PoolState<const TOKEN_COUNT: usize> {
     pub nonce: u8,
     pub is_paused: bool,
@@ -34,6 +34,7 @@ pub struct PoolState<const TOKEN_COUNT: usize> {
 }
 
 impl<const TOKEN_COUNT: usize> PoolState<TOKEN_COUNT> {
+    // pub const LEN: usize = 8 + 8 + (TOKEN_COUNT * 2 * 64) + 
     pub fn is_initialized(&self) -> bool {
         self.lp_mint_key != Pubkey::default()
     }

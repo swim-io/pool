@@ -33,7 +33,7 @@ use crate::{
     invariant::Invariant,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-
+use solana_program::msg;
 const ENACT_DELAY: UnixTimestamp = 3 * 86400;
 
 type AmountT = u64;
@@ -45,6 +45,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         accounts: &[AccountInfo],
         instruction_data: &[u8],
     ) -> ProgramResult {
+        msg!("[DEV] process - TOKEN_COUNT: {}", TOKEN_COUNT);
         match PoolInstruction::<TOKEN_COUNT>::try_from_slice(instruction_data)? {
             //all this boiler-plate could probably be replaced by implementing a procedural macro on PoolInstruction
             PoolInstruction::Init {
@@ -92,18 +93,26 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         };
 
         let pool_account = check_duplicate_and_get_next()?;
+        msg!("[DEV] TOKEN_COUNT: {}", TOKEN_COUNT);
+        msg!("[DEV] checking if pool is large enought to be rent exempt");
         if !Rent::get()?.is_exempt(pool_account.lamports(), pool_account.data_len()) {
             return Err(ProgramError::AccountNotRentExempt);
         }
+        msg!("[DEV] pool passed rent exmption check");
+        msg!("[DEV] check_and_deserialize_pool_state");
 
         match Self::check_and_deserialize_pool_state(&pool_account, &program_id) {
             Err(ProgramError::UninitializedAccount) => (),
             Err(e) => return Err(e),
             Ok(_) => return Err(ProgramError::AccountAlreadyInitialized),
         }
+        msg!("[DEV] passed check_and_deserialize_pool_state");
 
+        msg!("[DEV] checking get_authority_account");
         let pool_authority_account = Self::get_pool_authority(pool_account.key, nonce, program_id)?;
+        msg!("[DEV] passed get_authority_account");
 
+        msg!("[DEV] checking lp_mint_account");
         let lp_mint_account = check_duplicate_and_get_next()?;
         let lp_mint_state = Self::check_program_owner_and_unpack::<MintState>(lp_mint_account)?;
         if lp_mint_state.supply != 0 {
@@ -115,16 +124,24 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         if lp_mint_state.freeze_authority.is_some() {
             return Err(PoolError::MintHasFreezeAuthority.into());
         }
-
+        msg!("[DEV] passed lp_mint_account checks");
+        
         let token_mint_accounts = Self::get_array(|_| check_duplicate_and_get_next())?;
+        msg!("[DEV] token_mint_accounts.len: {}", token_mint_accounts.len());
         let token_accounts = Self::get_array(|_| check_duplicate_and_get_next())?;
+        msg!("[DEV] token_accounts.len: {}", token_accounts.len());
 
         for i in 0..TOKEN_COUNT {
+            msg!("[DEV] checking token_mint_account & token_account [{}]", i);
             let token_mint_account = token_mint_accounts[i];
-            let token_account = token_mint_accounts[i];
+            let token_account = token_accounts[i];
+            msg!("[DEV] checking mint_state[{}]. Pubkey: {}", i, token_mint_account.key);
             let mint_state = Self::check_program_owner_and_unpack::<MintState>(token_mint_account)?;
-            let token_state = Self::check_program_owner_and_unpack::<TokenState>(token_account)?;
+            msg!("[DEV] checking token_state[{}]. Pubkey: {}", i, token_account.key);
+            //let token_state = Self::check_program_owner_and_unpack::<TokenState>(token_account)?;
+            let token_state = TokenState::unpack(&token_account.data.borrow())?;
 
+            msg!("[DEV] passed token_state[{}]", i);
             //for now we enforce the same decimals across all tokens though in the future this should become more flexible
             if mint_state.decimals != lp_mint_state.decimals {
                 return Err(TokenError::MintDecimalsMismatch.into());
@@ -144,8 +161,10 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             if token_state.close_authority.is_some() {
                 return Err(PoolError::TokenAccountHasCloseAuthority.into());
             }
+            msg!("[DEV] finished checking mint_state & token_state[{}]", i);
         }
 
+        msg!("[DEV] checking governance & governance_fee accounts");
         let governance_account = check_duplicate_and_get_next()?;
         let governance_fee_account = check_duplicate_and_get_next()?;
         if (governance_fee != DecimalU64::from(0) || *governance_fee_account.key != Pubkey::default())
@@ -154,6 +173,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         {
             return Err(TokenError::MintMismatch.into());
         }
+        msg!("[DEV] passed checking governance & governance_fee accounts");
 
         let to_key_array = |account_array: &[&AccountInfo; TOKEN_COUNT]| -> [Pubkey; TOKEN_COUNT] {
             account_array

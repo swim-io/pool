@@ -19,7 +19,7 @@ use std::{
     fmt, fmt::{Display, Formatter},
     iter::{Sum, Product},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize, BorshSchema};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -148,7 +148,7 @@ macro_rules! unsigned_decimal {(
     $bits:expr, //<$value_type>::BITS is still unstable
     $max_decimals:expr //floor(log_10(2^bits-1))
 ) => {
-    #[derive(BorshSerialize, Debug, Clone, Copy, Default)]
+    #[derive(BorshSerialize, BorshSchema, Debug, Clone, Copy, Default)]
     pub struct $name {
         value: $value_type,
         decimals: u8
