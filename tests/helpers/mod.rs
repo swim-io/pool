@@ -1,11 +1,12 @@
 // use assert_matches::*;
-use solana_program::{program_option::COption, program_pack::Pack, pubkey::Pubkey, account_info::AccountInfo};
+use solana_program::{hash::Hash, program_option::COption, program_pack::Pack, pubkey::Pubkey, account_info::AccountInfo, system_instruction};
 use solana_program_test::*;
 use solana_sdk::{
     account::Account,
     signature::{read_keypair_file, Keypair, Signer},
     system_instruction::create_account,
     transaction::{Transaction, TransactionError},
+    transport::TransportError,
 };
 use spl_token::{
     instruction::approve,
@@ -21,22 +22,6 @@ use arrayvec::ArrayVec;
 type AmountT = u64;
 type DecT = DecimalU64;
 
-// #[derive(Debug)]
-// pub struct TestPoolAccountInfo<const TOKEN_COUNT: usize> {
-//     pub nonce: u8,
-//     pub pool_key: Pubkey,
-//     //pub pool_account: Account,
-//     pub lp_mint_key: Pubkey,
-//     //pub lp_mint_account: Account,
-//     pub token_mint_keys: [Pubkey; TOKEN_COUNT],
-//     // pub token_mint_accounts: [Account; TOKEN_COUNT],
-//     pub token_account_keys: [Pubkey; TOKEN_COUNT],
-//     // pub token_account_accounts: [Account; TOKEN_COUNT],
-//     pub governance_key: Pubkey,
-//     // pub governance_account: Account,
-//     pub governance_fee_key: Pubkey,
-//     // pub governance_fee_account: Account,
-// }
 
 #[derive(Debug)]
 pub struct TestPoolAccountInfo<const TOKEN_COUNT: usize> {
@@ -49,6 +34,7 @@ pub struct TestPoolAccountInfo<const TOKEN_COUNT: usize> {
     pub governance_keypair: Keypair,
     pub governance_fee_keypair: Keypair,
 }
+
 
 impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
     pub fn new() -> Self {
@@ -78,6 +64,8 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
             governance_fee_keypair
         }
     }
+
+
 
     pub async fn init_pool(
         &self,
@@ -251,5 +239,164 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
             .await
             .unwrap();
     }
+
+    /// Creates user token accounts, mints them tokens
+    /// delegate approval to pool authority for transfers
+    pub async fn prepare_accounts_for_add(
+        &self,
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        user_accounts_owner: &Keypair,
+        deposit_tokens_to_mint: [AmountT; TOKEN_COUNT],
+        deposit_tokens_for_approval: [AmountT; TOKEN_COUNT],
+    ) -> [Keypair; TOKEN_COUNT] {
+        let mut user_token_keypairs_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
+        for _i in 0..TOKEN_COUNT {
+            user_token_keypairs_arrayvec.push(Keypair::new());
+        }
+        let mut user_token_keypairs: [Keypair; TOKEN_COUNT] = user_token_keypairs_arrayvec.into_inner().unwrap();
+        let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+        for i in 0..TOKEN_COUNT {
+            let token_mint = self.token_mint_keypairs[i].pubkey();
+            let user_token_keypair = &user_token_keypairs[i];
+            create_token_account(
+                banks_client,
+                payer,
+                &recent_blockhash,
+                &user_token_keypair,
+                &token_mint,
+                &user_accounts_owner.pubkey(),
+            )
+            .await
+            .unwrap();
+
+            mint_tokens_to(
+                banks_client,
+                payer,
+                &recent_blockhash,
+                &token_mint,
+                &user_token_keypair.pubkey(),
+                user_accounts_owner,
+                deposit_tokens_to_mint[i]
+            )
+            .await
+            .unwrap();
+
+            approve_delegate(
+                banks_client,
+                payer,
+                &recent_blockhash,
+                &user_token_keypair.pubkey(),
+                &self.authority,
+                user_accounts_owner,
+                deposit_tokens_for_approval[i],
+            )
+            .await
+            .unwrap();
+        }
+
+        user_token_keypairs
+    }
+
+
+    pub async fn add(
+        &self,
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        user_accounts_owner: &Keypair,
+        user_token_accounts: &[Keypair; TOKEN_COUNT],
+        deposit_amounts: [AmountT; TOKEN_COUNT],
+    ) {
+        
+        
+    }
 }
 
+/** Helper fns  **/
+/// Creates and initializes a token account
+pub async fn create_token_account(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: &Hash,
+    account: &Keypair,
+    mint: &Pubkey,
+    owner: &Pubkey,
+) -> Result<(), TransportError> {
+    let rent = banks_client.get_rent().await.unwrap();
+    let account_rent = rent.minimum_balance(spl_token::state::Account::LEN);
+
+    let mut transaction = Transaction::new_with_payer(
+        &[
+            system_instruction::create_account(
+                &payer.pubkey(),
+                &account.pubkey(),
+                account_rent,
+                spl_token::state::Account::LEN as u64,
+                &spl_token::id(),
+            ),
+            spl_token::instruction::initialize_account(
+                &spl_token::id(),
+                &account.pubkey(),
+                mint,
+                owner,
+            )
+            .unwrap(),
+        ],
+        Some(&payer.pubkey()),
+    );
+    transaction.sign(&[payer, account], *recent_blockhash);
+    banks_client.process_transaction(transaction).await?;
+    Ok(())
+}
+
+pub async fn mint_tokens_to(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: &Hash,
+    mint: &Pubkey,
+    destination: &Pubkey,
+    authority: &Keypair,
+    amount: u64,
+) -> Result<(), TransportError> {
+    let mut transaction = Transaction::new_with_payer(
+        &[spl_token::instruction::mint_to(
+            &spl_token::id(),
+            mint,
+            destination,
+            &authority.pubkey(),
+            &[&authority.pubkey()],
+            amount,
+        )
+        .unwrap()],
+        Some(&payer.pubkey()),
+    );
+    transaction.sign(&[payer, authority], *recent_blockhash);
+    banks_client.process_transaction(transaction).await?;
+    Ok(())
+}
+
+pub async fn approve_delegate(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: &Hash,
+    source: &Pubkey,
+    delegate: &Pubkey,
+    source_owner: &Keypair,
+    amount: u64,
+) -> Result<(), TransportError> {
+    let mut transaction = Transaction::new_with_payer(
+        &[spl_token::instruction::approve(
+            &spl_token::id(),
+            source,
+            delegate,
+            &source_owner.pubkey(),
+            &[&source_owner.pubkey()],
+            amount,
+        )
+        .unwrap()],
+        Some(&payer.pubkey()),
+    );
+    transaction.sign(&[payer, source_owner], *recent_blockhash);
+    banks_client.process_transaction(transaction).await?;
+    Ok(())
+}

@@ -77,6 +77,19 @@ pub fn create_init_ix<const TOKEN_COUNT: usize>(
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
+    /// Adds/Deposits the specified input_amounts and mints
+    /// at least `minimum_mint_amount` LP tokens
+    ///
+    /// Accounts expected by this instruction:
+    ///     0. `[w]` The pool state account to initalize
+    ///     1. `[]` pool authority 
+    ///     2. ..2 + TOKEN_COUNT `[]` pool's token accounts
+    ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
+    ///     4. ..4 + TOKEN_COUNT `[]` governance_fee_account
+    ///     5. ..5 + TOKEN_COUNT `[]` user transfer authority account
+    ///     6. ..6 + TOKEN_COUNT `[]` user token accounts
+    ///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
+    ///     8. ..7 + (2 * TOKEN_COUNT) `[]` user LP token account   
     Add {
         input_amounts: [AmountT; TOKEN_COUNT],
         minimum_mint_amount: AmountT,
