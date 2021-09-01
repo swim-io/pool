@@ -21,7 +21,7 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize, BorshSchema};
 use thiserror::Error;
 
-use uint::{construct_uint, unroll};
+use uint::construct_uint;
 construct_uint! {
     #[derive(BorshSerialize, BorshDeserialize, BorshSchema)]
     pub struct U128(2);
@@ -253,11 +253,15 @@ macro_rules! unsigned_decimal {(
             let mut shift = 0;
             let mut dec = self.decimals;
             loop {
-                dec = (dec + 1)/2;
+                let next_dec = (dec + 1)/2;
                 if self.value % Self::ten_to_the_value_type(shift + dec) == $convert!(0, $value_type) {
-                    shift += dec;
+                    shift += next_dec;
+                    dec -= next_dec;
                 }
-                if dec == 1 {
+                else {
+                    dec = next_dec;
+                }
+                if dec <= 1 {
                     break;
                 }
             }
