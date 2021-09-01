@@ -1,10 +1,6 @@
-use borsh::{BorshDeserialize, BorshSerialize, BorshSchema};
+use crate::{decimal::DecimalError, decimal::DecimalU64, error::PoolError};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::clock::UnixTimestamp;
-use crate::{
-    error::PoolError,
-    decimal::DecimalU64,
-    decimal::DecimalError,
-};
 
 pub type TimestampT = UnixTimestamp;
 pub type ValueT = DecimalU64;
@@ -71,7 +67,7 @@ impl AmpFactor {
             // a 10x over a day (not +10, but potentially much more))
 
             let value_diff = self.target_value - self.initial_value;
-            let time_since_initial = DecimalU64::new((current_ts - self.initial_ts) as u64,0).unwrap();
+            let time_since_initial = DecimalU64::new((current_ts - self.initial_ts) as u64, 0).unwrap();
             let total_adjustment_time = DecimalU64::new((self.target_ts - self.initial_ts) as u64, 0).unwrap();
             let delta = value_diff * (time_since_initial / total_adjustment_time);
 
@@ -94,10 +90,8 @@ impl AmpFactor {
         }
 
         let initial_value = self.get(current_ts);
-        if (initial_value < target_value
-            && initial_value * MAX_RELATIVE_ADJUSTMENT.unwrap() < target_value)
-            || (initial_value > target_value
-                && initial_value > target_value * MAX_RELATIVE_ADJUSTMENT.unwrap())
+        if (initial_value < target_value && initial_value * MAX_RELATIVE_ADJUSTMENT.unwrap() < target_value)
+            || (initial_value > target_value && initial_value > target_value * MAX_RELATIVE_ADJUSTMENT.unwrap())
         {
             return Err(PoolError::InvalidAmpFactorValue);
         }
@@ -134,16 +128,16 @@ mod tests {
 
     #[test]
     fn valid_set_target() {
-        let mut amp = AmpFactor::new(new_u64(10000,0)).unwrap();
+        let mut amp = AmpFactor::new(new_u64(10000, 0)).unwrap();
         assert_eq!(amp.get(1), 10000);
-        
+
         amp.set_target(20000, new_u64(20000, 0), 106400).unwrap();
-        
+
         assert_eq!(amp.get(20000), 10000);
-        assert_eq!(amp.get(30000), new_u64(11157407407407407407,15));
-        assert_eq!(amp.get(50000), new_u64(13472222222222222222,15));
-        assert_eq!(amp.get(70000), new_u64(15787037037037037037,15));
-        assert_eq!(amp.get(90000), new_u64(18101851851851851851,15));
+        assert_eq!(amp.get(30000), new_u64(11157407407407407407, 15));
+        assert_eq!(amp.get(50000), new_u64(13472222222222222222, 15));
+        assert_eq!(amp.get(70000), new_u64(15787037037037037037, 15));
+        assert_eq!(amp.get(90000), new_u64(18101851851851851851, 15));
         assert_eq!(amp.get(106400), 20000);
     }
 
@@ -151,14 +145,14 @@ mod tests {
     #[should_panic]
     fn invalid_set_target() {
         //Target value set to 20x initial value
-        let mut amp = AmpFactor::new(new_u64(1000,0)).unwrap();
-        amp.set_target(20000, new_u64(20000,0), 106400).unwrap();
+        let mut amp = AmpFactor::new(new_u64(1000, 0)).unwrap();
+        amp.set_target(20000, new_u64(20000, 0), 106400).unwrap();
     }
 
     #[test]
     #[should_panic]
     fn invalid_adjustment_window() {
-        let mut amp = AmpFactor::new(new_u64(10000,0)).unwrap();
-        amp.set_target(20000, new_u64(20000,0), 50000).unwrap();
+        let mut amp = AmpFactor::new(new_u64(10000, 0)).unwrap();
+        amp.set_target(20000, new_u64(20000, 0), 50000).unwrap();
     }
 }

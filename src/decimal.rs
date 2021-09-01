@@ -10,15 +10,17 @@
 // don't explicitly use checked_* (i.e. all the inline ops like +,-,*,/,%, etc.) should never
 // be able to fail and could hence be replaced by unsafe_* calls to reduce strain on compute budget.
 
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use std::{
-    io,
-    cmp, cmp::{PartialEq, Eq, PartialOrd, Ord, Ordering},
-    ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div, DivAssign},
+    cmp,
+    cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd},
     convert::TryFrom,
-    fmt, fmt::{Display, Formatter},
-    iter::{Sum, Product},
+    fmt,
+    fmt::{Display, Formatter},
+    io,
+    iter::{Product, Sum},
+    ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign},
 };
-use borsh::{BorshDeserialize, BorshSerialize, BorshSchema};
 use thiserror::Error;
 
 use uint::{construct_uint, unroll};
@@ -36,7 +38,7 @@ pub enum DecimalError {
     #[error("Maximum decimals exceeded")]
     MaxDecimalsExceeded,
     #[error("Conversion error")]
-    ConversionError
+    ConversionError,
 }
 
 const fn ten_to_the(exp: u8) -> u128 {
@@ -71,12 +73,12 @@ const fn create_ten_to_the() -> [u128; U128_MAX_DECIMALS] {
 // 0b0001_0000 * 10 = 0b1010_0000 -> safe to multiply by 10
 // 0b0001_1100 * 10 = 0b1110_0000 + 0b0011_1000 -> overflow
 // => with 3 leading zeros in binary representation, therefore the lower bound is 0, the upper bound is 1
-// 
+//
 // multiplying by 10^2 = 64 + 32 + 4 = 0b1100100 -> x*100 = x*64 + x*32 + x*4 = x<<6 + x<<5 + x<<2
 // so again 6 leading zeros might or might not be enough to multiply by 100 while ...
 // ... 5 definitely isn't enough and 7 certainly is
 // so 6 has a lower bound of 1 and an upper bound of 2
-// 
+//
 // same for multiplying by 10^3 = 0b1111101000 -> x*1000 = x<<9 + ... so 9 might or might not be enough
 // so 9 has a lower bound of 2 and an upper bound of 3
 //
@@ -93,30 +95,31 @@ const fn create_ten_to_the() -> [u128; U128_MAX_DECIMALS] {
 // get_order_of_magnitude(26u8) = 2 but still get_unused_decimals(255u8) = 0
 // while:
 // get_order_of_magnitude(25u8) = 2 however get_unused_decimals(255u8) = 1
-const BIT_TO_DEC_SIZE: usize = 128+2; //u128::BITS is still an unstable feature
-const BIT_TO_DEC_ARRAY: [u8;BIT_TO_DEC_SIZE] = create_bit_to_dec_array();
+const BIT_TO_DEC_SIZE: usize = 128 + 2; //u128::BITS is still an unstable feature
+const BIT_TO_DEC_ARRAY: [u8; BIT_TO_DEC_SIZE] = create_bit_to_dec_array();
 const fn create_bit_to_dec_array() -> [u8; BIT_TO_DEC_SIZE] {
     let mut btd = [0; BIT_TO_DEC_SIZE];
     let mut pot: u128 = 10;
     let mut i = 1 as usize; //we start with the second iteration
-    loop { //const functions can't use for loops
+    loop {
+        //const functions can't use for loops
         let jump = ((1 << i as u128) / pot) as u8;
         if jump == 1 {
             pot = match pot.checked_mul(10) {
                 Some(v) => v,
                 None => {
-                    btd[i] = btd[i-1] + 1;
+                    btd[i] = btd[i - 1] + 1;
                     loop {
                         i += 1;
                         if i >= BIT_TO_DEC_SIZE {
                             return btd;
                         }
-                        btd[i] = btd[i-1];
+                        btd[i] = btd[i - 1];
                     }
                 }
             }
         }
-        btd[i] = btd[i-1] + jump;
+        btd[i] = btd[i - 1] + jump;
         i += 1;
     }
 }
@@ -131,15 +134,32 @@ macro_rules! unsigned_decimal {(
     $bits:expr, //<$value_type>::BITS is still unstable
     $max_decimals:expr $(,)? //floor(log_10(2^bits-1))
 ) => {
-    #[derive(BorshSerialize, BorshSchema, Debug, Clone, Copy, Default)]
-    pub struct $name {
-        value: $value_type,
-        decimals: u8
-    }
+        #[derive(BorshSerialize, BorshSchema, Debug, Clone, Copy, Default)]
+        pub struct $name {
+            value: $value_type,
+            decimals: u8,
+        }
 
-    impl $name {
-        pub const BITS: u32 = $bits;
-        pub const MAX_DECIMALS: u8 = $max_decimals;
+        impl $name {
+            pub const BITS: u32 = $bits;
+            pub const MAX_DECIMALS: u8 = $max_decimals;
+
+            fn ten_to_the(exp: u8) -> $value_type {
+                debug_assert!(
+                    exp <= Self::MAX_DECIMALS,
+                    "exp={} exceeded MAX_DECIMALS={}",
+                    exp,
+                    Self::MAX_DECIMALS
+                );
+                ten_to_the(exp) as $value_type
+            }
+
+            pub const fn new(value: $value_type, decimals: u8) -> Result<Self, DecimalError> {
+                if decimals > Self::MAX_DECIMALS {
+                    return Err(DecimalError::MaxDecimalsExceeded);
+                }
+                Ok(Self { value, decimals })
+            }
 
         fn ten_to_the_value_type(exp: u8) -> $value_type {
             $convert!(ten_to_the(exp), $value_type)
@@ -184,25 +204,21 @@ macro_rules! unsigned_decimal {(
             }
         }
 
-        pub const fn new(value: $value_type, decimals: u8) -> Result<Self, DecimalError> {
-            if decimals > Self::MAX_DECIMALS {
-                return Err(DecimalError::MaxDecimalsExceeded)
+            pub const fn get_raw(&self) -> $value_type {
+                self.value
             }
-            Ok(Self{value, decimals})
-        }
 
-        //workaround because From trait's from function isn't const...
-        pub const fn const_from(value: $value_type) -> Self {
-            Self{value, decimals: 0}
-        }
+            pub const fn get_decimals(&self) -> u8 {
+                self.decimals
+            }
 
-        pub const fn get_raw(&self) -> $value_type {
-            self.value
-        }
+            pub fn trunc(&self) -> $value_type {
+                self.value / Self::ten_to_the(self.decimals)
+            }
 
-        pub const fn get_decimals(&self) -> u8 {
-            self.decimals
-        }
+            pub fn fract(&self) -> $value_type {
+                self.value % Self::ten_to_the(self.decimals)
+            }
 
         pub fn trunc(&self) -> $value_type {
             self.value / Self::ten_to_the_value_type(self.decimals)
@@ -221,8 +237,6 @@ macro_rules! unsigned_decimal {(
                 ret.value += up;
                 ret.decimals = decimals;
             }
-            ret
-        }
 
         //TODO banker's rounding?
         pub fn round(&self, decimals: u8) -> Self {
@@ -234,7 +248,6 @@ macro_rules! unsigned_decimal {(
                 ret.value += up;
                 ret.decimals = decimals;
             }
-            ret
         }
 
         pub fn floor(&self, decimals: u8) -> Self {
@@ -243,7 +256,6 @@ macro_rules! unsigned_decimal {(
                 ret.value /= Self::ten_to_the_value_type(ret.decimals - decimals);
                 ret.decimals = decimals;
             }
-            ret
         }
 
         //reduce decimals as to eliminate all trailing decimal zeros
@@ -337,7 +349,6 @@ macro_rules! unsigned_decimal {(
             let decimals = self.decimals + upshift - other.decimals;
             Self::shift_to_fit(quotient, decimals)
         }
-    }
 
     impl Display for $name {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -350,20 +361,12 @@ macro_rules! unsigned_decimal {(
                 write!(f, "{}.{:0decimals$}", self.trunc(), fract, decimals = normalized.decimals as usize)
             }
         }
-    }
 
-    impl BorshDeserialize for $name {
-        fn deserialize(buf: &mut &[u8]) -> Result<Self, io::Error> {
-            let value = <$value_type>::deserialize(buf)?;
-            let decimals = <u8>::deserialize(buf)?;
-            if decimals > Self::MAX_DECIMALS {
-                Err(io::Error::new(io::ErrorKind::InvalidData, "decimals value out of bounds"))
-            }
-            else {
-                Ok(Self{value, decimals})
+        impl PartialEq<$value_type> for $name {
+            fn eq(&self, other: &$value_type) -> bool {
+                self.trunc() == *other && self.fract() == 0
             }
         }
-    }
 
     impl PartialEq for $name {
         fn eq(&self, other: &Self) -> bool {
@@ -374,7 +377,6 @@ macro_rules! unsigned_decimal {(
                 Ordering::Greater => {self.fract() == other.fract()*Self::ten_to_the_value_type(self.decimals-other.decimals)},
             }
         }
-    }
 
     impl PartialEq<$value_type> for $name {
         fn eq(&self, other: &$value_type) -> bool {
@@ -382,38 +384,38 @@ macro_rules! unsigned_decimal {(
         }
     }
 
-    impl PartialEq<$name> for $value_type {
-        fn eq(&self, other: &$name) -> bool {
-            other.eq(self)
+        impl PartialOrd for $name {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                Some(self.cmp(other))
+            }
         }
-    }
 
-    impl Eq for $name {}
-    
-    impl PartialOrd for $name {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
+        impl PartialOrd<$value_type> for $name {
+            fn partial_cmp(&self, other: &$value_type) -> Option<Ordering> {
+                Some(self.cmp(&Self {
+                    value: *other,
+                    decimals: 0,
+                }))
+            }
         }
-    }
 
-    impl PartialOrd<$value_type> for $name {
-        fn partial_cmp(&self, other: &$value_type) -> Option<Ordering> {
-            Some(self.cmp(&Self{value: *other, decimals: 0}))
+        impl PartialOrd<$name> for $value_type {
+            fn partial_cmp(&self, other: &$name) -> Option<Ordering> {
+                Some(
+                    $name {
+                        value: *self,
+                        decimals: 0,
+                    }
+                    .cmp(other),
+                )
+            }
         }
-    }
 
-    impl PartialOrd<$name> for $value_type {
-        fn partial_cmp(&self, other: &$name) -> Option<Ordering> {
-            Some($name{value: *self, decimals: 0}.cmp(other))
-        }
-    }
-    
-    impl Ord for $name {
-        fn cmp(&self, other: &Self) -> Ordering {
-            let cmp = self.trunc().cmp(&other.trunc());
-            match cmp {
-                Ordering::Equal => {
-                    match self.decimals.cmp(&other.decimals) {
+        impl Ord for $name {
+            fn cmp(&self, other: &Self) -> Ordering {
+                let cmp = self.trunc().cmp(&other.trunc());
+                match cmp {
+                    Ordering::Equal => match self.decimals.cmp(&other.decimals) {
                         Ordering::Equal => self.fract().cmp(&other.fract()),
                         Ordering::Less => (self.fract()*Self::ten_to_the_value_type(other.decimals-self.decimals)).cmp(&other.fract()),
                         Ordering::Greater => self.fract().cmp(&(other.fract()*Self::ten_to_the_value_type(self.decimals-other.decimals))),
@@ -422,7 +424,6 @@ macro_rules! unsigned_decimal {(
                 _ => cmp
             }
         }
-    }
 
     impl From<$value_type> for $name {
         fn from(value: $value_type) -> Self {
@@ -433,165 +434,182 @@ macro_rules! unsigned_decimal {(
     impl Add for $name {
         type Output = Self;
 
-        fn add(self, other: Self) -> Self::Output {
-            self.checked_add(other)
-                .unwrap_or_else(|| panic!("Overflow while adding {:?} {:?}", self, other))
+            fn add(self, other: Self) -> Self::Output {
+                self.checked_add(other)
+                    .unwrap_or_else(|| panic!("Overflow while adding {:?} {:?}", self, other))
+            }
         }
-    }
 
-    impl Add<$value_type> for $name {
-        type Output = Self;
+        impl Add<$value_type> for $name {
+            type Output = Self;
 
-        fn add(self, other: $value_type) -> Self::Output {
-            self + Self{value: other, decimals: 0}
+            fn add(self, other: $value_type) -> Self::Output {
+                self + Self {
+                    value: other,
+                    decimals: 0,
+                }
+            }
         }
-    }
 
-    impl Add<$name> for $value_type {
-        type Output = $name;
+        impl Add<$name> for $value_type {
+            type Output = $name;
 
-        fn add(self, other: $name) -> Self::Output {
-            other + self
+            fn add(self, other: $name) -> Self::Output {
+                other + self
+            }
         }
-    }
 
-    impl AddAssign for $name {
-        fn add_assign(&mut self, other: Self) {
-            *self = *self + other;
+        impl AddAssign for $name {
+            fn add_assign(&mut self, other: Self) {
+                *self = *self + other;
+            }
         }
-    }
 
-    impl AddAssign<$value_type> for $name {
-        fn add_assign(&mut self, other: $value_type) {
-            *self = *self + other;
+        impl AddAssign<$value_type> for $name {
+            fn add_assign(&mut self, other: $value_type) {
+                *self = *self + other;
+            }
         }
-    }
 
     impl Sum for $name {
         fn sum<I>(iter: I) -> Self
             where I: Iterator<Item = Self> {
             iter.fold(Self{value: $convert!(0, $value_type), decimals: 0}, |accumulator, it| accumulator + it)
         }
-    }
 
-    impl Sub for $name {
-        type Output = Self;
+        impl Sub for $name {
+            type Output = Self;
 
-        fn sub(self, other: Self) -> Self::Output {
-            self.checked_sub(other)
-                .unwrap_or_else(|| panic!("Underflow while subtracting {:?} {:?}", self, other))
+            fn sub(self, other: Self) -> Self::Output {
+                self.checked_sub(other)
+                    .unwrap_or_else(|| panic!("Underflow while subtracting {:?} {:?}", self, other))
+            }
         }
-    }
 
-    impl Sub<$value_type> for $name {
-        type Output = Self;
+        impl Sub<$value_type> for $name {
+            type Output = Self;
 
-        fn sub(self, other: $value_type) -> Self::Output {
-            self - Self{value: other, decimals: 0}
+            fn sub(self, other: $value_type) -> Self::Output {
+                self - Self {
+                    value: other,
+                    decimals: 0,
+                }
+            }
         }
-    }
 
-    impl Sub<$name> for $value_type {
-        type Output = $name;
+        impl Sub<$name> for $value_type {
+            type Output = $name;
 
-        fn sub(self, other: $name) -> Self::Output {
-            $name{value: self, decimals: 0} - other
+            fn sub(self, other: $name) -> Self::Output {
+                $name {
+                    value: self,
+                    decimals: 0,
+                } - other
+            }
         }
-    }
 
-    impl SubAssign for $name {
-        fn sub_assign(&mut self, other: Self) {
-            *self = *self - other;
+        impl SubAssign for $name {
+            fn sub_assign(&mut self, other: Self) {
+                *self = *self - other;
+            }
         }
-    }
 
-    impl SubAssign<$value_type> for $name {
-        fn sub_assign(&mut self, other: $value_type) {
-            *self = *self - other;
+        impl SubAssign<$value_type> for $name {
+            fn sub_assign(&mut self, other: $value_type) {
+                *self = *self - other;
+            }
         }
-    }
 
-    impl Mul for $name {
-        type Output = Self;
+        impl Mul for $name {
+            type Output = Self;
 
-        fn mul(self, other: Self) -> Self::Output {
-            self.checked_mul(other)
-                .unwrap_or_else(|| panic!("Overflow while multiplying {:?} {:?}", self, other))
+            fn mul(self, other: Self) -> Self::Output {
+                self.checked_mul(other)
+                    .unwrap_or_else(|| panic!("Overflow while multiplying {:?} {:?}", self, other))
+            }
         }
-    }
 
-    impl Mul<$value_type> for $name {
-        type Output = Self;
+        impl Mul<$value_type> for $name {
+            type Output = Self;
 
-        fn mul(self, other: $value_type) -> Self::Output {
-            self * Self{value: other, decimals: 0}
+            fn mul(self, other: $value_type) -> Self::Output {
+                self * Self {
+                    value: other,
+                    decimals: 0,
+                }
+            }
         }
-    }
 
-    impl Mul<$name> for $value_type {
-        type Output = $name;
+        impl Mul<$name> for $value_type {
+            type Output = $name;
 
-        fn mul(self, other: $name) -> Self::Output {
-            other * self
+            fn mul(self, other: $name) -> Self::Output {
+                other * self
+            }
         }
-    }
 
-    impl MulAssign for $name {
-        fn mul_assign(&mut self, other: Self) {
-            *self = *self * other;
+        impl MulAssign for $name {
+            fn mul_assign(&mut self, other: Self) {
+                *self = *self * other;
+            }
         }
-    }
 
-    impl MulAssign<$value_type> for $name {
-        fn mul_assign(&mut self, other: $value_type) {
-            *self = *self * other;
+        impl MulAssign<$value_type> for $name {
+            fn mul_assign(&mut self, other: $value_type) {
+                *self = *self * other;
+            }
         }
-    }
 
     impl Product for $name {
         fn product<I>(iter: I) -> Self
             where I: Iterator<Item = Self> {
             iter.fold(Self{value: $convert!(1, $value_type), decimals: 0}, |accumulator, it| accumulator * it)
         }
-    }
 
-    impl Div for $name {
-        type Output = Self;
+        impl Div for $name {
+            type Output = Self;
 
-        fn div(self, other: Self) -> Self::Output {
-            self.checked_div(other)
-                .unwrap_or_else(|| panic!("Division by zero while dividing {:?} {:?}", self, other))
+            fn div(self, other: Self) -> Self::Output {
+                self.checked_div(other)
+                    .unwrap_or_else(|| panic!("Division by zero while dividing {:?} {:?}", self, other))
+            }
         }
-    }
 
-    impl Div<$value_type> for $name {
-        type Output = Self;
+        impl Div<$value_type> for $name {
+            type Output = Self;
 
-        fn div(self, other: $value_type) -> Self::Output {
-            self / Self{value: other, decimals: 0}
+            fn div(self, other: $value_type) -> Self::Output {
+                self / Self {
+                    value: other,
+                    decimals: 0,
+                }
+            }
         }
-    }
 
-    impl Div<$name> for $value_type {
-        type Output = $name;
+        impl Div<$name> for $value_type {
+            type Output = $name;
 
-        fn div(self, other: $name) -> Self::Output {
-            $name{value: self, decimals: 0} / other
+            fn div(self, other: $name) -> Self::Output {
+                $name {
+                    value: self,
+                    decimals: 0,
+                } / other
+            }
         }
-    }
 
-    impl DivAssign for $name {
-        fn div_assign(&mut self, other: Self) {
-            *self = *self / other;
+        impl DivAssign for $name {
+            fn div_assign(&mut self, other: Self) {
+                *self = *self / other;
+            }
         }
-    }
 
-    impl DivAssign<$value_type> for $name {
-        fn div_assign(&mut self, other: $value_type) {
-            *self = *self / other;
+        impl DivAssign<$value_type> for $name {
+            fn div_assign(&mut self, other: $value_type) {
+                *self = *self / other;
+            }
         }
-    }
-}}
+    };
+}
 
 impl From<u128> for DecimalU128 {
     fn from(value: u128) -> Self {
@@ -655,18 +673,19 @@ impl From<$name> for $larger_name {
     }
 }
 
-impl TryFrom<$larger_name> for $name {
-    type Error = DecimalError;
+        impl TryFrom<$larger_name> for $name {
+            type Error = DecimalError;
 
-    fn try_from(v: $larger_name) -> Result<Self, Self::Error> {
-        Self::shift_to_fit(v.get_raw(), v.get_decimals()).ok_or(DecimalError::ConversionError)
-    }
+            fn try_from(v: $larger_name) -> Result<Self, Self::Error> {
+                Self::shift_to_fit(v.get_raw(), v.get_decimals()).ok_or(DecimalError::ConversionError)
+            }
+        }
+    };
 }
 
 }}
 
 impl_interop! {DecimalU64, DecimalU128, to_uint128, U128}
-
 
 #[cfg(test)]
 mod tests {
@@ -681,21 +700,21 @@ mod tests {
         // assert_eq!(new_u8(1,1) * new_u8(1,1), new_u8(1,2));
         // assert_eq!(new_u8(1,0) / new_u8(3,0), new_u8(33,2));
         let new_u64 = |value, decimals| DecimalU64::new(value, decimals).unwrap();
-        let pi = new_u64(31415,4);
-        assert_eq!(pi.ceil(0), new_u64(4,0));
-        assert_eq!(pi.ceil(1), new_u64(32,1));
-        assert_eq!(pi.ceil(2), new_u64(315,2));
-        assert_eq!(pi.ceil(3), new_u64(3142,3));
+        let pi = new_u64(31415, 4);
+        assert_eq!(pi.ceil(0), new_u64(4, 0));
+        assert_eq!(pi.ceil(1), new_u64(32, 1));
+        assert_eq!(pi.ceil(2), new_u64(315, 2));
+        assert_eq!(pi.ceil(3), new_u64(3142, 3));
         assert_eq!(pi.ceil(4), pi);
-        assert_eq!(pi.round(0), new_u64(3,0));
-        assert_eq!(pi.round(1), new_u64(31,1));
-        assert_eq!(pi.round(2), new_u64(314,2));
-        assert_eq!(pi.round(3), new_u64(3142,3));
+        assert_eq!(pi.round(0), new_u64(3, 0));
+        assert_eq!(pi.round(1), new_u64(31, 1));
+        assert_eq!(pi.round(2), new_u64(314, 2));
+        assert_eq!(pi.round(3), new_u64(3142, 3));
         assert_eq!(pi.round(4), pi);
-        assert_eq!(pi.floor(0), new_u64(3,0));
-        assert_eq!(pi.floor(1), new_u64(31,1));
-        assert_eq!(pi.floor(2), new_u64(314,2));
-        assert_eq!(pi.floor(3), new_u64(3141,3));
+        assert_eq!(pi.floor(0), new_u64(3, 0));
+        assert_eq!(pi.floor(1), new_u64(31, 1));
+        assert_eq!(pi.floor(2), new_u64(314, 2));
+        assert_eq!(pi.floor(3), new_u64(3141, 3));
         assert_eq!(pi.floor(4), pi);
     }
 

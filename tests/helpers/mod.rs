@@ -1,5 +1,10 @@
 // use assert_matches::*;
-use solana_program::{hash::Hash, program_option::COption, program_pack::Pack, pubkey::Pubkey, account_info::AccountInfo, system_instruction};
+use arrayvec::ArrayVec;
+use pool::{decimal::*, instruction::*};
+use solana_program::{
+    account_info::AccountInfo, hash::Hash, program_option::COption, program_pack::Pack, pubkey::Pubkey,
+    system_instruction,
+};
 use solana_program_test::*;
 use solana_sdk::{
     account::Account,
@@ -12,16 +17,9 @@ use spl_token::{
     instruction::approve,
     state::{Account as Token, AccountState, Mint},
 };
-use pool::{
-    instruction::*,
-    decimal::*,
-};
-use arrayvec::ArrayVec;
-
 
 type AmountT = u64;
 type DecT = DecimalU64;
-
 
 #[derive(Debug)]
 pub struct TestPoolAccountInfo<const TOKEN_COUNT: usize> {
@@ -35,13 +33,11 @@ pub struct TestPoolAccountInfo<const TOKEN_COUNT: usize> {
     pub governance_fee_keypair: Keypair,
 }
 
-
 impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
     pub fn new() -> Self {
         let pool_keypair = Keypair::new();
         let lp_mint_keypair = Keypair::new();
-        let (authority, nonce) = 
-            Pubkey::find_program_address(&[&pool_keypair.pubkey().to_bytes()[..32]], &pool::id());
+        let (authority, nonce) = Pubkey::find_program_address(&[&pool_keypair.pubkey().to_bytes()[..32]], &pool::id());
         let mut token_mint_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
         let mut token_account_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
         for _i in 0..TOKEN_COUNT {
@@ -61,11 +57,26 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
             token_mint_keypairs,
             token_account_keypairs,
             governance_keypair,
-            governance_fee_keypair
+            governance_fee_keypair,
         }
     }
 
+    pub fn get_token_mint_pubkeys(&self) -> [Pubkey; TOKEN_COUNT] {
+        Self::to_key_array(&self.token_mint_keypairs)
+    }
 
+    pub fn get_token_account_pubkeys(&self) -> [Pubkey; TOKEN_COUNT] {
+        Self::to_key_array(&self.token_account_keypairs)
+    }
+
+    fn to_key_array(account_slice: &[Keypair; TOKEN_COUNT]) -> [Pubkey; TOKEN_COUNT] {
+        account_slice
+            .iter()
+            .map(|account| account.pubkey())
+            .collect::<ArrayVec<_, TOKEN_COUNT>>()
+            .into_inner()
+            .unwrap()
+    }
 
     pub async fn init_pool(
         &self,
@@ -75,28 +86,22 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         amp_factor: DecT, // DecimalU64::new(value, decimals).unwrap()
         lp_fee: DecT,
         governance_fee: DecT,
-    )  {
+    ) {
         let rent = banks_client.get_rent().await.unwrap();
-        let to_key_array = |account_array: &[Keypair; TOKEN_COUNT]| -> [Pubkey; TOKEN_COUNT] {
-            account_array
-                .iter()
-                .map(|account| account.pubkey())
-                .collect::<ArrayVec<_, TOKEN_COUNT>>()
-                .into_inner()
-                .unwrap()
-        };
 
-        let token_mint_pubkeys: [Pubkey; TOKEN_COUNT] = to_key_array(&self.token_mint_keypairs);
-        let token_account_pubkeys: [Pubkey; TOKEN_COUNT] = to_key_array(&self.token_account_keypairs);
+        // let token_mint_pubkeys: [Pubkey; TOKEN_COUNT] = to_key_array(&self.token_mint_keypairs);
+        // let token_account_pubkeys: [Pubkey; TOKEN_COUNT] = to_key_array(&self.token_account_keypairs);
+        let token_mint_pubkeys = *(&self.get_token_mint_pubkeys());
+        let token_account_pubkeys = *(&self.get_token_account_pubkeys());
 
-        let pool_len = solana_program::borsh::get_packed_len::<pool::state::PoolState::<TOKEN_COUNT>>();
+        let pool_len = solana_program::borsh::get_packed_len::<pool::state::PoolState<TOKEN_COUNT>>();
         let mut ixs_vec = vec![
             create_account(
                 &payer.pubkey(),
                 &self.pool_keypair.pubkey(),
                 rent.minimum_balance(pool_len),
                 pool_len as u64,
-                &pool::id(), 
+                &pool::id(),
             ),
             // Create LP Mint account
             create_account(
@@ -115,19 +120,17 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
             )
             .unwrap(),
         ];
-         // create token mints and Token accounts
+        // create token mints and Token accounts
         for i in 0..TOKEN_COUNT {
             println!("adding create_account & initialize_mint ix for {}", i);
-            ixs_vec.push(
-                create_account(
-                    &payer.pubkey(),
-                    &token_mint_pubkeys[i],
-                    //&token_mint_keypairs[i],
-                    rent.minimum_balance(Mint::LEN),
-                    Mint::LEN as u64,
-                    &spl_token::id(),
-                ),
-            );
+            ixs_vec.push(create_account(
+                &payer.pubkey(),
+                &token_mint_pubkeys[i],
+                //&token_mint_keypairs[i],
+                rent.minimum_balance(Mint::LEN),
+                Mint::LEN as u64,
+                &spl_token::id(),
+            ));
             ixs_vec.push(
                 spl_token::instruction::initialize_mint(
                     &spl_token::id(),
@@ -136,50 +139,44 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
                     None,
                     0,
                 )
-                .unwrap()
+                .unwrap(),
             );
         }
         for i in 0..TOKEN_COUNT {
             println!("adding create_account & initialize_account ix for {}", i);
-            ixs_vec.push(
-                create_account(
-                    &payer.pubkey(),
-                    &token_account_pubkeys[i],
-                    //&token_account_keypairs[i],
-                    rent.minimum_balance(Token::LEN),
-                    Token::LEN as u64,
-                    &spl_token::id(),
-                )
-            );
+            ixs_vec.push(create_account(
+                &payer.pubkey(),
+                &token_account_pubkeys[i],
+                //&token_account_keypairs[i],
+                rent.minimum_balance(Token::LEN),
+                Token::LEN as u64,
+                &spl_token::id(),
+            ));
             ixs_vec.push(
                 spl_token::instruction::initialize_account(
                     &spl_token::id(),
                     &token_account_pubkeys[i],
                     &token_mint_pubkeys[i],
-                    &self.authority, 
+                    &self.authority,
                 )
-                .unwrap()
+                .unwrap(),
             );
         }
 
-        ixs_vec.push(
-            create_account(
-                &payer.pubkey(),
-                &self.governance_keypair.pubkey(),
-                rent.minimum_balance(Token::LEN), //TODO: not sure what the len of this should be? data would just be empty?
-                Token::LEN as u64,
-                &user_accounts_owner.pubkey(), //TODO: randomly assigned owner to the user account owner
-            )
-        );
-        ixs_vec.push(
-            create_account(
-                &payer.pubkey(),
-                &self.governance_fee_keypair.pubkey(),
-                rent.minimum_balance(Token::LEN), 
-                Token::LEN as u64,
-                &spl_token::id(),
-            )
-        );
+        ixs_vec.push(create_account(
+            &payer.pubkey(),
+            &self.governance_keypair.pubkey(),
+            rent.minimum_balance(Token::LEN), //TODO: not sure what the len of this should be? data would just be empty?
+            Token::LEN as u64,
+            &user_accounts_owner.pubkey(), //TODO: randomly assigned owner to the user account owner
+        ));
+        ixs_vec.push(create_account(
+            &payer.pubkey(),
+            &self.governance_fee_keypair.pubkey(),
+            rent.minimum_balance(Token::LEN),
+            Token::LEN as u64,
+            &spl_token::id(),
+        ));
         ixs_vec.push(
             spl_token::instruction::initialize_account(
                 &spl_token::id(),
@@ -187,7 +184,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
                 &self.lp_mint_keypair.pubkey(),
                 &user_accounts_owner.pubkey(), //TODO: randomly assigned governance_fee token account owner to the user account owner,
             )
-            .unwrap()
+            .unwrap(),
         );
         ixs_vec.push(
             create_init_ix::<TOKEN_COUNT>(
@@ -201,14 +198,12 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
                 self.nonce,
                 amp_factor,
                 lp_fee,
-                governance_fee
-            ).unwrap()
+                governance_fee,
+            )
+            .unwrap(),
         );
 
-        let mut transaction = Transaction::new_with_payer(
-            &ixs_vec,
-            Some(&payer.pubkey()),
-        );
+        let mut transaction = Transaction::new_with_payer(&ixs_vec, Some(&payer.pubkey()));
         let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
         let mut signatures = vec![
             payer,
@@ -219,7 +214,6 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
 
         for i in 0..TOKEN_COUNT {
             signatures.push(&self.token_mint_keypairs[i]);
-            
         }
         for i in 0..TOKEN_COUNT {
             signatures.push(&self.token_account_keypairs[i]);
@@ -228,16 +222,9 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         signatures.push(&self.governance_keypair);
         signatures.push(&self.governance_fee_keypair);
 
+        transaction.sign(&signatures, recent_blockhash);
 
-        transaction.sign(
-            &signatures,
-            recent_blockhash,
-        );
-
-        banks_client
-            .process_transaction(transaction)
-            .await
-            .unwrap();
+        banks_client.process_transaction(transaction).await.unwrap();
     }
 
     /// Creates user token accounts, mints them tokens
@@ -247,9 +234,10 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         banks_client: &mut BanksClient,
         payer: &Keypair,
         user_accounts_owner: &Keypair,
+        authority: &Pubkey,
         deposit_tokens_to_mint: [AmountT; TOKEN_COUNT],
         deposit_tokens_for_approval: [AmountT; TOKEN_COUNT],
-    ) -> [Keypair; TOKEN_COUNT] {
+    ) -> ([Keypair; TOKEN_COUNT], Keypair) {
         let mut user_token_keypairs_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
         for _i in 0..TOKEN_COUNT {
             user_token_keypairs_arrayvec.push(Keypair::new());
@@ -277,7 +265,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
                 &token_mint,
                 &user_token_keypair.pubkey(),
                 user_accounts_owner,
-                deposit_tokens_to_mint[i]
+                deposit_tokens_to_mint[i],
             )
             .await
             .unwrap();
@@ -287,7 +275,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
                 payer,
                 &recent_blockhash,
                 &user_token_keypair.pubkey(),
-                &self.authority,
+                authority,
                 user_accounts_owner,
                 deposit_tokens_for_approval[i],
             )
@@ -295,20 +283,54 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
             .unwrap();
         }
 
-        user_token_keypairs
+        let user_lp_token_keypair = Keypair::new();
+        create_token_account(
+            banks_client,
+            payer,
+            &recent_blockhash,
+            &user_lp_token_keypair,
+            &self.lp_mint_keypair.pubkey(),
+            &user_accounts_owner.pubkey(),
+        )
+        .await
+        .unwrap();
+
+        (user_token_keypairs, user_lp_token_keypair)
     }
 
-
-    pub async fn add(
+    pub async fn execute_add(
         &self,
         banks_client: &mut BanksClient,
         payer: &Keypair,
         user_accounts_owner: &Keypair,
+        authority: &Pubkey, //explicitly passing in authority b/c it can be pool authority or user specified user_transfer_authority
         user_token_accounts: &[Keypair; TOKEN_COUNT],
+        token_program_account: &Pubkey,
+        user_lp_token_account: &Pubkey,
         deposit_amounts: [AmountT; TOKEN_COUNT],
+        minimum_amount: AmountT,
     ) {
-        
-        
+        let mut transaction = Transaction::new_with_payer(
+            &[create_add_ix(
+                &pool::id(),
+                &self.pool_keypair.pubkey(),
+                &self.authority,
+                *(&self.get_token_account_pubkeys()),
+                &self.lp_mint_keypair.pubkey(),
+                &self.governance_fee_keypair.pubkey(),
+                authority,
+                Self::to_key_array(user_token_accounts),
+                token_program_account,
+                user_lp_token_account,
+                deposit_amounts,
+                minimum_amount,
+            )
+            .unwrap()],
+            Some(&payer.pubkey()),
+        );
+        let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+        transaction.sign(&[payer], recent_blockhash);
+        banks_client.process_transaction(transaction).await.unwrap();
     }
 }
 
@@ -334,13 +356,7 @@ pub async fn create_token_account(
                 spl_token::state::Account::LEN as u64,
                 &spl_token::id(),
             ),
-            spl_token::instruction::initialize_account(
-                &spl_token::id(),
-                &account.pubkey(),
-                mint,
-                owner,
-            )
-            .unwrap(),
+            spl_token::instruction::initialize_account(&spl_token::id(), &account.pubkey(), mint, owner).unwrap(),
         ],
         Some(&payer.pubkey()),
     );

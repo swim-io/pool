@@ -1,7 +1,5 @@
 use crate::{error::to_error_msg, processor::Processor};
-use solana_program::{
-    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, msg, pubkey::Pubkey,
-};
+use solana_program::{account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, msg, pubkey::Pubkey};
 
 pub const TOKEN_COUNT: usize = 4; //TODO find a proper way to set/configure this
 
