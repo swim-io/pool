@@ -18,7 +18,9 @@ borsh = { version = "0.9.1", features = ["const-generics"] }
 borsh-derive = "0.9.1"
 
 #numerics
-#uint = { version = "0.9.1", default-features = false }
+uint = { version = "0.9.1", default-features = false }
+rust_decimal = {version = "1.15", features = [ "maths" ] }
+rust_decimal_macros = "1.15"
 
 #error handling
 thiserror = "1.0"
