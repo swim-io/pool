@@ -61,9 +61,7 @@ impl From<PoolError> for ProgramError {
 
 pub fn to_error_msg(error: &ProgramError) -> String {
     match error {
-        ProgramError::Custom(ec) if *ec < OFFSET as u32 => {
-            TokenError::from_u32(*ec).unwrap().to_string()
-        }
+        ProgramError::Custom(ec) if *ec < OFFSET as u32 => TokenError::from_u32(*ec).unwrap().to_string(),
         ProgramError::Custom(ec) => PoolError::from_u32(*ec).unwrap().to_string(),
         e => e.to_string(),
     }

@@ -1,10 +1,7 @@
 //naming: pool_fee to distinguish from other fees (such as Solana's fee sysvar)
 
-use crate::{
-    error::PoolError,
-    decimal::DecimalU64,
-};
-use borsh::{BorshDeserialize, BorshSerialize, BorshSchema};
+use crate::{decimal::DecimalU64, error::PoolError};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 
 //fees are stored with a resolution of one hundredth of a basis point, i.e. 10^-6
 const DECIMALS: u8 = 6;
@@ -27,7 +24,7 @@ impl PoolFee {
             //fee has to be less than 100 % and decimals have to fit
             return Err(PoolError::InvalidFeeInput);
         }
-        
+
         self.0 = floored_fee.get_raw() as u32;
 
         Ok(())
@@ -49,7 +46,7 @@ mod tests {
     #[test]
     fn new_pool_fee() {
         // 50% fee
-        let _fee = PoolFee::new( new_u64(500000, 6)).unwrap();
+        let _fee = PoolFee::new(new_u64(500000, 6)).unwrap();
     }
 
     #[test]
@@ -62,7 +59,7 @@ mod tests {
     #[test]
     fn get_fee() {
         // 0.5% fee
-        let fee_value = new_u64( 500000, 8);
+        let fee_value = new_u64(500000, 8);
         let fee = PoolFee::new(fee_value).unwrap();
         assert_eq!(fee.get(), fee_value.floor(DECIMALS));
     }
@@ -70,6 +67,6 @@ mod tests {
     #[test]
     #[should_panic]
     fn overflow_value() {
-        let _fee = PoolFee::new(new_u64( 123456789, 11)).unwrap();
+        let _fee = PoolFee::new(new_u64(123456789, 11)).unwrap();
     }
 }

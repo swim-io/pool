@@ -1,8 +1,5 @@
-use borsh::{BorshDeserialize, BorshSerialize, BorshSchema};
-use solana_program::{
-    clock::UnixTimestamp,
-    pubkey::Pubkey,
-};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use solana_program::{clock::UnixTimestamp, pubkey::Pubkey};
 
 use crate::{amp_factor::AmpFactor, pool_fee::PoolFee};
 
@@ -34,7 +31,7 @@ pub struct PoolState<const TOKEN_COUNT: usize> {
 }
 
 impl<const TOKEN_COUNT: usize> PoolState<TOKEN_COUNT> {
-    // pub const LEN: usize = 8 + 8 + (TOKEN_COUNT * 2 * 64) + 
+    // pub const LEN: usize = 8 + 8 + (TOKEN_COUNT * 2 * 64) +
     pub fn is_initialized(&self) -> bool {
         self.lp_mint_key != Pubkey::default()
     }

@@ -1,50 +1,44 @@
 use arrayvec::ArrayVec;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
+    clock::UnixTimestamp,
     entrypoint::ProgramResult,
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     program_option::COption,
     program_pack::{IsInitialized, Pack},
     pubkey::Pubkey,
-    clock::UnixTimestamp,
     sysvar::{clock::Clock, rent::Rent, Sysvar},
 };
 use std::fmt;
 
 use spl_token::{
     error::TokenError,
-    instruction::{mint_to, burn, transfer},
+    instruction::{burn, mint_to, transfer},
     state::Account as TokenState,
     state::Mint as MintState,
 };
 
 use crate::{
     amp_factor::AmpFactor,
+    decimal::DecimalU64,
     error::PoolError,
-    instruction::{
-        PoolInstruction,
-        DeFiInstruction,
-        GovernanceInstruction,
-    },
+    instruction::{DeFiInstruction, GovernanceInstruction, PoolInstruction, PoolInstruction::*},
+    invariant::Invariant,
     pool_fee::PoolFee,
     state::PoolState,
-    decimal::DecimalU64,
-    invariant::Invariant,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::msg;
+//Note - using this b/c of not all bytes read error. found from using this - https://brson.github.io/2021/06/08/rust-on-solana
+// use solana_program::borsh::try_from_slice_unchecked;
 const ENACT_DELAY: UnixTimestamp = 3 * 86400;
 
 type AmountT = u64;
 
 pub struct Processor<const TOKEN_COUNT: usize>;
 impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
-    pub fn process(
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-        instruction_data: &[u8],
-    ) -> ProgramResult {
+    pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
         msg!("[DEV] process - TOKEN_COUNT: {}", TOKEN_COUNT);
         match PoolInstruction::<TOKEN_COUNT>::try_from_slice(instruction_data)? {
             //all this boiler-plate could probably be replaced by implementing a procedural macro on PoolInstruction
@@ -53,15 +47,18 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 amp_factor,
                 lp_fee,
                 governance_fee,
-            } => Self::process_init(nonce, amp_factor, lp_fee, governance_fee, program_id, accounts),
+            } => {
+                msg!("[DEV] process_init");
+                Self::process_init(nonce, amp_factor, lp_fee, governance_fee, program_id, accounts)
+            }
 
-            PoolInstruction::DeFiInstruction(
-                defi_instruction
-            ) => Self::process_defi_instruction(defi_instruction, program_id, accounts),
-
-            PoolInstruction::GovernanceInstruction(
-                governance_instruction
-            ) => Self::process_governance_instruction(governance_instruction, program_id, accounts)
+            PoolInstruction::DeFiInstruction(defi_instruction) => {
+                msg!("[DEV] Processing Defi ix");
+                Self::process_defi_instruction(defi_instruction, program_id, accounts)
+            }
+            PoolInstruction::GovernanceInstruction(governance_instruction) => {
+                Self::process_governance_instruction(governance_instruction, program_id, accounts)
+            }
         }
     }
 
@@ -125,7 +122,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             return Err(PoolError::MintHasFreezeAuthority.into());
         }
         msg!("[DEV] passed lp_mint_account checks");
-        
+
         let token_mint_accounts = Self::get_array(|_| check_duplicate_and_get_next())?;
         msg!("[DEV] token_mint_accounts.len: {}", token_mint_accounts.len());
         let token_accounts = Self::get_array(|_| check_duplicate_and_get_next())?;
@@ -168,8 +165,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         let governance_account = check_duplicate_and_get_next()?;
         let governance_fee_account = check_duplicate_and_get_next()?;
         if (governance_fee != DecimalU64::from(0) || *governance_fee_account.key != Pubkey::default())
-            && Self::check_program_owner_and_unpack::<TokenState>(governance_fee_account)?.mint
-                != *lp_mint_account.key
+            && Self::check_program_owner_and_unpack::<TokenState>(governance_fee_account)?.mint != *lp_mint_account.key
         {
             return Err(TokenError::MintMismatch.into());
         }
@@ -203,19 +199,23 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 fee_transition_ts: 0,
             },
             &pool_account,
-        )
+        );
+        msg!("[DEV] Serialized pool");
+        Ok(())
     }
 
     fn process_defi_instruction(
-        defi_instruction: DeFiInstruction::<TOKEN_COUNT>,
+        defi_instruction: DeFiInstruction<TOKEN_COUNT>,
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
+        msg!("[DEV] processing defi ix");
         let mut account_info_iter = accounts.iter();
         let pool_account = next_account_info(&mut account_info_iter)?;
         let pool_state = Self::check_and_deserialize_pool_state(pool_account, &program_id)?;
+        msg!("[DEV] checked & deserialized pool_state");
 
-        if pool_state.is_paused && !matches!(defi_instruction, DeFiInstruction::RemoveUniform{..}) {
+        if pool_state.is_paused && !matches!(defi_instruction, DeFiInstruction::RemoveUniform { .. }) {
             return Err(PoolError::PoolIsPaused.into());
         }
 
@@ -223,6 +223,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         if *pool_authority_account.key != Self::get_pool_authority(pool_account.key, pool_state.nonce, program_id)? {
             return Err(PoolError::InvalidPoolAuthorityAccount.into());
         }
+        msg!("[DEV] checked pool authority");
         let pool_token_accounts = {
             let check_pool_token_account = |i| {
                 // -> Result<&AccountInfo, ProgramError>
@@ -234,6 +235,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             };
             Self::get_array(check_pool_token_account)?
         };
+        msg!("[DEV] checked pool token accounts");
 
         let pool_balances = Self::get_array(|i| {
             Ok(Self::check_program_owner_and_unpack::<TokenState>(pool_token_accounts[i])?.amount)
@@ -268,20 +270,20 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 }
 
                 let user_lp_token_account = next_account_info(&mut account_info_iter)?;
-        
+
                 let (mint_amount, govnernace_mint_amount) = Invariant::<TOKEN_COUNT>::add(
                     &input_amounts,
                     &pool_balances,
                     pool_state.amp_factor.get(Self::get_current_ts()?),
                     pool_state.lp_fee.get(),
                     pool_state.governance_fee.get(),
-                    lp_total_supply
+                    lp_total_supply,
                 );
-        
+
                 if mint_amount < minimum_mint_amount {
                     return Err(PoolError::OutsideSpecifiedLimits.into());
                 }
-        
+
                 for i in 0..TOKEN_COUNT {
                     if input_amounts[i] > 0 {
                         Self::transfer_token(
@@ -289,11 +291,11 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                             pool_token_accounts[i],
                             input_amounts[i],
                             user_authority_account,
-                            token_program_account
+                            token_program_account,
                         )?;
                     }
                 }
-        
+
                 Self::mint_token(
                     lp_mint_account,
                     user_lp_token_account,
@@ -301,11 +303,11 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_authority_account,
                     token_program_account,
                     pool_account,
-                    pool_state.nonce
+                    pool_state.nonce,
                 )?;
 
                 govnernace_mint_amount
-            },
+            }
 
             DeFiInstruction::RemoveUniform {
                 exact_burn_amount,
@@ -316,12 +318,12 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 }
 
                 let user_lp_token_account = next_account_info(&mut account_info_iter)?;
-                let user_share = DecimalU64::from(exact_burn_amount)/lp_total_supply;
-        
+                let user_share = DecimalU64::from(exact_burn_amount) / lp_total_supply;
+
                 for i in 0..TOKEN_COUNT {
                     let output_amount = (pool_balances[i] * user_share).trunc();
                     if output_amount < minimum_output_amounts[i] {
-                        return Err(PoolError::OutsideSpecifiedLimits.into())
+                        return Err(PoolError::OutsideSpecifiedLimits.into());
                     }
                     Self::transfer_pool_token(
                         pool_token_accounts[i],
@@ -330,16 +332,16 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                         pool_authority_account,
                         token_program_account,
                         pool_account,
-                        pool_state.nonce
+                        pool_state.nonce,
                     )?;
                 }
-        
+
                 Self::burn_token(
                     user_lp_token_account,
                     lp_mint_account,
                     exact_burn_amount,
                     user_authority_account,
-                    token_program_account
+                    token_program_account,
                 )?;
 
                 0
@@ -351,9 +353,10 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 minimum_output_amount,
             } => {
                 let output_token_index = output_token_index as usize;
-                if exact_input_amounts.iter().all(|amount| *amount == 0) ||
-                   output_token_index >= TOKEN_COUNT ||
-                   exact_input_amounts[output_token_index] != 0 {
+                if exact_input_amounts.iter().all(|amount| *amount == 0)
+                    || output_token_index >= TOKEN_COUNT
+                    || exact_input_amounts[output_token_index] != 0
+                {
                     return Err(ProgramError::InvalidInstructionData);
                 }
 
@@ -364,7 +367,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.amp_factor.get(Self::get_current_ts()?),
                     pool_state.lp_fee.get(),
                     pool_state.governance_fee.get(),
-                    lp_total_supply
+                    lp_total_supply,
                 );
 
                 if output_amount < minimum_output_amount {
@@ -378,7 +381,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                             pool_token_accounts[i],
                             exact_input_amounts[i],
                             user_authority_account,
-                            token_program_account
+                            token_program_account,
                         )?;
                     }
                 }
@@ -390,11 +393,11 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_authority_account,
                     token_program_account,
                     pool_account,
-                    pool_state.nonce
+                    pool_state.nonce,
                 )?;
 
                 govnernace_mint_amount
-            },
+            }
 
             DeFiInstruction::SwapExactOutput {
                 maximum_input_amount,
@@ -403,11 +406,14 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             } => {
                 let input_token_index = input_token_index as usize;
 
-                if exact_output_amounts.iter().all(|amount| *amount == 0) ||
-                   input_token_index >= TOKEN_COUNT ||
-                   exact_output_amounts[input_token_index] != 0 ||
-                   exact_output_amounts.iter().zip(pool_balances.iter()).any(
-                       |(output_amount, pool_balance)| *output_amount >= *pool_balance) {
+                if exact_output_amounts.iter().all(|amount| *amount == 0)
+                    || input_token_index >= TOKEN_COUNT
+                    || exact_output_amounts[input_token_index] != 0
+                    || exact_output_amounts
+                        .iter()
+                        .zip(pool_balances.iter())
+                        .any(|(output_amount, pool_balance)| *output_amount >= *pool_balance)
+                {
                     return Err(ProgramError::InvalidInstructionData);
                 }
 
@@ -418,7 +424,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.amp_factor.get(Self::get_current_ts()?),
                     pool_state.lp_fee.get(),
                     pool_state.governance_fee.get(),
-                    lp_total_supply
+                    lp_total_supply,
                 );
 
                 if input_amount > maximum_input_amount {
@@ -430,7 +436,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_token_accounts[input_token_index],
                     input_amount,
                     user_authority_account,
-                    token_program_account
+                    token_program_account,
                 )?;
 
                 for i in 0..TOKEN_COUNT {
@@ -442,13 +448,13 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                             pool_authority_account,
                             token_program_account,
                             pool_account,
-                            pool_state.nonce
+                            pool_state.nonce,
                         )?;
                     }
                 }
 
                 govnernace_mint_amount
-            },
+            }
 
             DeFiInstruction::RemoveExactBurn {
                 exact_burn_amount,
@@ -456,8 +462,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 minimum_output_amount,
             } => {
                 let output_token_index = output_token_index as usize;
-                if output_token_index >= TOKEN_COUNT ||
-                    exact_burn_amount == 0 {
+                if output_token_index >= TOKEN_COUNT || exact_burn_amount == 0 {
                     return Err(ProgramError::InvalidInstructionData);
                 }
 
@@ -470,7 +475,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.amp_factor.get(Self::get_current_ts()?),
                     pool_state.lp_fee.get(),
                     pool_state.governance_fee.get(),
-                    lp_total_supply
+                    lp_total_supply,
                 );
 
                 if output_amount < minimum_output_amount {
@@ -482,7 +487,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     lp_mint_account,
                     exact_burn_amount,
                     user_authority_account,
-                    token_program_account
+                    token_program_account,
                 )?;
 
                 Self::transfer_pool_token(
@@ -492,20 +497,23 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_authority_account,
                     token_program_account,
                     pool_account,
-                    pool_state.nonce
+                    pool_state.nonce,
                 )?;
 
                 govnernace_mint_amount
-            },
+            }
 
             DeFiInstruction::RemoveExactOutput {
                 maximum_burn_amount,
                 exact_output_amounts,
             } => {
-                if exact_output_amounts.iter().all(|amount| *amount == 0) ||
-                    maximum_burn_amount == 0 ||
-                    exact_output_amounts.iter().zip(pool_balances.iter()).any(
-                        |(output_amount, pool_balance)| *output_amount >= *pool_balance) {
+                if exact_output_amounts.iter().all(|amount| *amount == 0)
+                    || maximum_burn_amount == 0
+                    || exact_output_amounts
+                        .iter()
+                        .zip(pool_balances.iter())
+                        .any(|(output_amount, pool_balance)| *output_amount >= *pool_balance)
+                {
                     return Err(ProgramError::InvalidInstructionData);
                 }
 
@@ -517,7 +525,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.amp_factor.get(Self::get_current_ts()?),
                     pool_state.lp_fee.get(),
                     pool_state.governance_fee.get(),
-                    lp_total_supply
+                    lp_total_supply,
                 );
 
                 if burn_amount > maximum_burn_amount {
@@ -529,7 +537,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     lp_mint_account,
                     burn_amount,
                     user_authority_account,
-                    token_program_account
+                    token_program_account,
                 )?;
 
                 for i in 0..TOKEN_COUNT {
@@ -541,13 +549,13 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                             pool_authority_account,
                             token_program_account,
                             pool_account,
-                            pool_state.nonce
+                            pool_state.nonce,
                         )?;
                     }
                 }
 
                 govnernace_mint_amount
-            },
+            }
         };
 
         if govnernace_mint_amount > 0 {
@@ -558,7 +566,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 pool_authority_account,
                 token_program_account,
                 pool_account,
-                pool_state.nonce
+                pool_state.nonce,
             )?;
         }
 
@@ -566,7 +574,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
     }
 
     fn process_governance_instruction(
-        governance_instruction: GovernanceInstruction::<TOKEN_COUNT>,
+        governance_instruction: GovernanceInstruction<TOKEN_COUNT>,
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
@@ -577,10 +585,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         Self::verify_governance_signature(next_account_info(account_info_iter)?, &pool_state)?;
 
         match governance_instruction {
-            GovernanceInstruction::PrepareFeeChange {
-                lp_fee,
-                governance_fee,
-            } => {
+            GovernanceInstruction::PrepareFeeChange { lp_fee, governance_fee } => {
                 if lp_fee + governance_fee >= DecimalU64::from(1) {
                     return Err(PoolError::InvalidFeeInput.into());
                 }
@@ -588,78 +593,74 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 pool_state.prepared_lp_fee = PoolFee::new(lp_fee)?;
                 pool_state.prepared_governance_fee = PoolFee::new(governance_fee)?;
                 pool_state.fee_transition_ts = Self::get_current_ts()? + ENACT_DELAY;
-            },
+            }
 
-            GovernanceInstruction::EnactFeeChange {
-            } => {
+            GovernanceInstruction::EnactFeeChange {} => {
                 if pool_state.fee_transition_ts == 0 {
                     return Err(PoolError::InvalidEnact.into());
                 }
-        
+
                 if pool_state.fee_transition_ts > Self::get_current_ts()? {
                     return Err(PoolError::InsufficientDelay.into());
                 }
-        
+
                 pool_state.lp_fee = pool_state.prepared_lp_fee;
                 pool_state.governance_fee = pool_state.prepared_governance_fee;
                 pool_state.prepared_lp_fee = PoolFee::default();
                 pool_state.prepared_governance_fee = PoolFee::default();
                 pool_state.fee_transition_ts = 0;
-            },
-            
+            }
+
             GovernanceInstruction::PrepareGovernanceTransition {
                 upcoming_governance_key,
             } => {
                 pool_state.prepared_governance_key = upcoming_governance_key;
                 pool_state.governance_transition_ts = Self::get_current_ts()? + ENACT_DELAY;
-            },
+            }
 
-            GovernanceInstruction::EnactGovernanceTransition {
-            } => {
+            GovernanceInstruction::EnactGovernanceTransition {} => {
                 if pool_state.governance_transition_ts == 0 {
                     return Err(PoolError::InvalidEnact.into());
                 }
-        
+
                 if pool_state.governance_transition_ts > Self::get_current_ts()? {
                     return Err(PoolError::InsufficientDelay.into());
                 }
-        
+
                 pool_state.governance_key = pool_state.prepared_governance_key;
                 pool_state.prepared_governance_key = Pubkey::default();
                 pool_state.governance_transition_ts = 0;
-            },
+            }
 
-            GovernanceInstruction::ChangeGovernanceFeeAccount {
-                governance_fee_key
-            } => {
+            GovernanceInstruction::ChangeGovernanceFeeAccount { governance_fee_key } => {
                 if governance_fee_key != Pubkey::default() {
                     let governance_fee_account = next_account_info(account_info_iter)?;
                     if *governance_fee_account.key != governance_fee_key {
-                        return Err(PoolError::InvalidGovernanceFeeAccout.into())
+                        return Err(PoolError::InvalidGovernanceFeeAccout.into());
                     }
-        
-                    let governance_fee_state = Self::check_program_owner_and_unpack::<TokenState>(governance_fee_account)?;
+
+                    let governance_fee_state =
+                        Self::check_program_owner_and_unpack::<TokenState>(governance_fee_account)?;
                     if governance_fee_state.mint != pool_state.lp_mint_key {
                         return Err(TokenError::MintMismatch.into());
                     }
+                } else if pool_state.governance_fee.get() == DecimalU64::from(0) {
+                    return Err(PoolError::InvalidGovernanceFeeAccout.into());
                 }
-                else if pool_state.governance_fee.get() == DecimalU64::from(0) {
-                    return Err(PoolError::InvalidGovernanceFeeAccout.into())
-                }
-        
+
                 pool_state.governance_fee_key = governance_fee_key;
-            },
+            }
 
             GovernanceInstruction::AdjustAmpFactor {
                 target_ts,
                 target_value,
             } => {
-                pool_state.amp_factor.set_target(Self::get_current_ts()?, target_value, target_ts)?;
+                pool_state
+                    .amp_factor
+                    .set_target(Self::get_current_ts()?, target_value, target_ts)?;
             }
 
-            GovernanceInstruction::SetPaused {
-                paused
-            } => {
+            GovernanceInstruction::SetPaused { paused } => {
                 pool_state.is_paused = paused;
             }
         }
@@ -669,18 +670,12 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
     // -------------------------------- Helper Functions --------------------------------
 
-    fn get_pool_authority(
-        pool_key: &Pubkey,
-        nonce: u8,
-        program_id: &Pubkey,
-    ) -> Result<Pubkey, ProgramError> {
+    fn get_pool_authority(pool_key: &Pubkey, nonce: u8, program_id: &Pubkey) -> Result<Pubkey, ProgramError> {
         Pubkey::create_program_address(&[&pool_key.to_bytes(), &[nonce]], program_id)
             .or(Err(ProgramError::IncorrectProgramId))
     }
 
-    fn check_program_owner_and_unpack<T: Pack + IsInitialized>(
-        account: &AccountInfo,
-    ) -> Result<T, ProgramError> {
+    fn check_program_owner_and_unpack<T: Pack + IsInitialized>(account: &AccountInfo) -> Result<T, ProgramError> {
         spl_token::check_program_account(account.owner)?;
         T::unpack(&account.data.borrow()).or(Err(ProgramError::InvalidAccountData))
     }
@@ -693,9 +688,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             return Err(ProgramError::IllegalOwner);
         }
 
-        let pool_state = PoolState::<TOKEN_COUNT>::deserialize(
-            &mut &**pool_account.data.try_borrow_mut().unwrap(),
-        )?;
+        let pool_state = PoolState::<TOKEN_COUNT>::deserialize(&mut &**pool_account.data.try_borrow_mut().unwrap())?;
 
         if !pool_state.is_initialized() {
             return Err(ProgramError::UninitializedAccount);
@@ -704,10 +697,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         Ok(pool_state)
     }
 
-    fn serialize_pool(
-        pool_state: &PoolState<TOKEN_COUNT>,
-        pool_account: &AccountInfo,
-    ) -> ProgramResult {
+    fn serialize_pool(pool_state: &PoolState<TOKEN_COUNT>, pool_account: &AccountInfo) -> ProgramResult {
         pool_state
             .serialize(&mut *pool_account.data.try_borrow_mut().unwrap())
             .or(Err(ProgramError::AccountDataTooSmall))
@@ -848,9 +838,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         Ok(current_ts)
     }
 
-    fn get_array<R>(
-        closure: impl FnMut(usize) -> Result<R, ProgramError>,
-    ) -> Result<[R; TOKEN_COUNT], ProgramError>
+    fn get_array<R>(closure: impl FnMut(usize) -> Result<R, ProgramError>) -> Result<[R; TOKEN_COUNT], ProgramError>
     where
         R: fmt::Debug,
     {
