@@ -121,6 +121,7 @@ const fn create_bit_to_dec_array() -> [u8; BIT_TO_DEC_SIZE] {
     }
 }
 
+//TODO add another macro that allows using built-in u128 for .leading_zeros() of U128 to further reduce compute cost
 macro_rules! unsigned_decimal {(
     $name:ident,
     $convert:ident,
@@ -151,9 +152,6 @@ macro_rules! unsigned_decimal {(
                 $upcast!(Self::ten_to_the_value_type(exp), $larger_type)
             }
             else {
-                if exp - Self::MAX_DECIMALS > Self::MAX_DECIMALS {
-                    panic!("WUT {}", exp);
-                }
                 $upcast!(Self::ten_to_the_value_type(Self::MAX_DECIMALS), $larger_type) *
                     $upcast!(Self::ten_to_the_value_type(exp - Self::MAX_DECIMALS), $larger_type)
             }
@@ -295,7 +293,7 @@ macro_rules! unsigned_decimal {(
                 value /= Self::ten_to_the_larger_type(down_shift_decimals);
                 decimals -= down_shift_decimals;
                 
-                if value == $upcast!($convert!(0, $value_type), $larger_type) {
+                if $downcast!(value, $value_type) == $convert!(0, $value_type) {
                     decimals = 0;
                 }
             }
@@ -327,7 +325,6 @@ macro_rules! unsigned_decimal {(
             if other.value == $convert!(0, $value_type) {
                 return None;
             }
-
             
             let numerator = $upcast!(self.value, $larger_type);
             let denominator = $upcast!(other.value, $larger_type);
