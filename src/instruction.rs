@@ -81,9 +81,9 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     /// Accounts expected by this instruction:
     ///     0. `[w]` The pool state account
     ///     1. `[]` pool authority
-    ///     2. ..2 + TOKEN_COUNT `[]` pool's token accounts
+    ///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
     ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
-    ///     4. ..4 + TOKEN_COUNT `[]` governance_fee_account
+    ///     4. ..4 + TOKEN_COUNT `[w]` governance_fee_account
     ///     5. ..5 + TOKEN_COUNT `[s]` user transfer authority account
     ///     6. ..6 + TOKEN_COUNT `[w]` user token accounts
     ///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
@@ -99,9 +99,9 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     /// Accounts expected by this instruction:
     ///     0. `[w]` The pool state account
     ///     1. `[]` pool authority
-    ///     2. ..2 + TOKEN_COUNT `[]` pool's token accounts
+    ///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
     ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
-    ///     4. ..4 + TOKEN_COUNT `[]` governance_fee_account
+    ///     4. ..4 + TOKEN_COUNT `[w]` governance_fee_account
     ///     5. ..5 + TOKEN_COUNT `[s]` user transfer authority account
     ///     6. ..6 + TOKEN_COUNT `[w]` user token accounts
     ///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
@@ -116,9 +116,9 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     /// Accounts expected by this instruction:
     ///     0. `[w]` The pool state account
     ///     1. `[]` pool authority
-    ///     2. ..2 + TOKEN_COUNT `[]` pool's token accounts
+    ///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
     ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
-    ///     4. ..4 + TOKEN_COUNT `[]` governance_fee_account
+    ///     4. ..4 + TOKEN_COUNT `[w]` governance_fee_account
     ///     5. ..5 + TOKEN_COUNT `[s]` user transfer authority account
     ///     6. ..6 + TOKEN_COUNT `[w]` user token accounts
     ///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
@@ -136,9 +136,9 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     /// Accounts expected by this instruction:
     ///     0. `[w]` The pool state account
     ///     1. `[]` pool authority
-    ///     2. ..2 + TOKEN_COUNT `[]` pool's token accounts
+    ///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
     ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
-    ///     4. ..4 + TOKEN_COUNT `[]` governance_fee_account
+    ///     4. ..4 + TOKEN_COUNT `[w]` governance_fee_account
     ///     5. ..5 + TOKEN_COUNT `[s]` user transfer authority account
     ///     6. ..6 + TOKEN_COUNT `[w]` user token accounts
     ///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
@@ -154,9 +154,9 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     /// Accounts expected by this instruction:
     ///     0. `[w]` The pool state account
     ///     1. `[]` pool authority
-    ///     2. ..2 + TOKEN_COUNT `[]` pool's token accounts
+    ///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
     ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
-    ///     4. ..4 + TOKEN_COUNT `[]` governance_fee_account
+    ///     4. ..4 + TOKEN_COUNT `[w]` governance_fee_account
     ///     5. ..5 + TOKEN_COUNT `[s]` user transfer authority account
     ///     6. ..6 + TOKEN_COUNT `[w]` user token accounts
     ///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
@@ -172,9 +172,9 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     /// Accounts expected by this instruction:
     ///     0. `[w]` The pool state account
     ///     1. `[]` pool authority
-    ///     2. ..2 + TOKEN_COUNT `[]` pool's token accounts
+    ///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
     ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
-    ///     4. ..4 + TOKEN_COUNT `[]` governance_fee_account
+    ///     4. ..4 + TOKEN_COUNT `[w]` governance_fee_account
     ///     5. ..5 + TOKEN_COUNT `[s]` user transfer authority account
     ///     6. ..6 + TOKEN_COUNT `[w]` user token accounts
     ///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
