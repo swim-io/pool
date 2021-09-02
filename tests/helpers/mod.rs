@@ -306,7 +306,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         banks_client: &mut BanksClient,
         payer: &Keypair,
         user_accounts_owner: &Keypair,
-        authority: &Pubkey, //explicitly passing in authority b/c it can be pool authority or user specified user_transfer_authority
+        authority: &Keypair, //explicitly passing in authority b/c it can be pool authority or user specified user_transfer_authority
         user_token_accounts: &[Keypair; TOKEN_COUNT],
         token_program_account: &Pubkey,
         user_lp_token_account: &Pubkey,
@@ -321,7 +321,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
                 *(&self.get_token_account_pubkeys()),
                 &self.lp_mint_keypair.pubkey(),
                 &self.governance_fee_keypair.pubkey(),
-                authority,
+                &authority.pubkey(),
                 Self::to_key_array(user_token_accounts),
                 token_program_account,
                 user_lp_token_account,
@@ -332,7 +332,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
             Some(&payer.pubkey()),
         );
         let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
-        transaction.sign(&[payer], recent_blockhash);
+        transaction.sign(&[payer, authority], recent_blockhash);
         banks_client.process_transaction(transaction).await.unwrap();
     }
 }

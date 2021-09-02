@@ -103,7 +103,7 @@ async fn test_pool_init() {
 }
 
 #[tokio::test]
-async fn test_pool_add_program_authority() {
+async fn test_pool_add_user_transfer_authority() {
     let mut test = ProgramTest::new(
         "pool",
         pool::id(),
@@ -148,14 +148,13 @@ async fn test_pool_add_program_authority() {
     let deposit_tokens_to_mint: [AmountT; TOKEN_COUNT] = deposit_tokens_to_mint_arrayvec.into_inner().unwrap();
     let deposit_tokens_for_approval: [AmountT; TOKEN_COUNT] =
         deposit_tokens_for_approval_arrayvec.into_inner().unwrap();
-
-    // using pool authority as user transfer authority
+    let user_transfer_authority = Keypair::new();
     let (user_token_accounts, user_lp_token_account) = pool
         .prepare_accounts_for_add(
             &mut banks_client,
             &payer,
             &user_accounts_owner,
-            &pool.authority,
+            &user_transfer_authority.pubkey(),
             deposit_tokens_to_mint,
             deposit_tokens_for_approval,
         )
@@ -180,27 +179,31 @@ async fn test_pool_add_program_authority() {
         get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
     assert_eq!(deposit_tokens_to_mint, user_token_balances_before);
     assert_eq!(0, user_lp_token_balances_before[0]);
-    // println!("[DEV] Executing add");
-    // pool.execute_add(
-    //     &mut banks_client,
-    //     &payer,
-    //     //&user_accounts_owner,
-    //     &pool.authority,
-    //     &user_token_accounts,
-    //     &spl_token::id(),
-    //     &user_lp_token_account.pubkey(),
-    //     deposit_tokens_for_approval,
-    //     0,
-    // )
-    // .await;
+    println!("[DEV] Executing add");
+    pool.execute_add(
+        &mut banks_client,
+        &payer,
+        &user_accounts_owner,
+        &user_transfer_authority,
+        &user_token_accounts,
+        &spl_token::id(),
+        &user_lp_token_account.pubkey(),
+        deposit_tokens_for_approval,
+        0,
+    )
+    .await;
 
-    // let user_token_balances_after = get_token_balances(&mut banks_client, user_token_pubkeys).await;
-    // let mut expected_user_token_balances_arrvec = ArrayVec::<_, TOKEN_COUNT>::new();
-    // for i in 0..TOKEN_COUNT {
-    //     expected_user_token_balances_arrvec.push(deposit_tokens_to_mint[i] - deposit_tokens_for_approval[i]);
-    // }
-    // let expected_user_token_balances = expected_user_token_balances_arrvec.into_inner().unwrap();
-    // println!("expected_user_token_balances: {:?}", expected_user_token_balances);
-    // println!("user_token_balances_after: {:?}", user_token_balances_after);
-    // assert_eq!(expected_user_token_balances, user_token_balances_after);
+    let user_token_balances_after = get_token_balances(&mut banks_client, user_token_pubkeys).await;
+    let mut expected_user_token_balances_arrvec = ArrayVec::<_, TOKEN_COUNT>::new();
+    for i in 0..TOKEN_COUNT {
+        expected_user_token_balances_arrvec.push(deposit_tokens_to_mint[i] - deposit_tokens_for_approval[i]);
+    }
+    let expected_user_token_balances = expected_user_token_balances_arrvec.into_inner().unwrap();
+    println!("expected_user_token_balances: {:?}", expected_user_token_balances);
+    println!("user_token_balances_after: {:?}", user_token_balances_after);
+    assert_eq!(expected_user_token_balances, user_token_balances_after);
+    let user_lp_token_balance_after = get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    println!("user_lp_token_balance_after: {:?}", user_lp_token_balance_after);
+    let governance_fee_balance = get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
+    println!("governance_fee_balance: {:?}", governance_fee_balance);
 }
