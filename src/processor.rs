@@ -241,25 +241,31 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             Ok(Self::check_program_owner_and_unpack::<TokenState>(pool_token_accounts[i])?.amount)
         })?;
 
+        msg!("[DEV] Checked pool balances");
         let lp_mint_account = next_account_info(&mut account_info_iter)?;
         if *lp_mint_account.key != pool_state.lp_mint_key {
             return Err(PoolError::InvalidMintAccount.into());
         }
+        msg!("[DEV] checked lp_mint_account");
         let lp_total_supply = Self::check_program_owner_and_unpack::<MintState>(lp_mint_account)?.supply;
         let governance_fee_account = next_account_info(&mut account_info_iter)?;
         if *governance_fee_account.key != pool_state.governance_fee_key {
             return Err(PoolError::InvalidGovernanceFeeAccout.into());
         }
+        msg!("[DEV] checked governacen_fee_account");
 
         let user_authority_account = next_account_info(&mut account_info_iter)?;
+        msg!("[DEV] checked user_authority_account");
         let user_token_accounts = Self::get_array(|_| Ok(next_account_info(&mut account_info_iter)?))?;
+        msg!("[DEV] checked user_token_accounts");
         let token_program_account = next_account_info(&mut account_info_iter)?;
-
+        msg!("[DEV] checked token_program_account");
         let govnernace_mint_amount = match defi_instruction {
             DeFiInstruction::Add {
                 input_amounts,
                 minimum_mint_amount,
             } => {
+                msg!("[DEV] Processing Add ix");
                 if input_amounts.iter().all(|amount| *amount == 0) {
                     return Err(ProgramError::InvalidInstructionData);
                 }
@@ -286,6 +292,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
                 for i in 0..TOKEN_COUNT {
                     if input_amounts[i] > 0 {
+                        msg!("[DEV] transferring {} for i = {}", input_amounts[i], i);
                         Self::transfer_token(
                             user_token_accounts[i],
                             pool_token_accounts[i],
@@ -559,6 +566,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         };
 
         if govnernace_mint_amount > 0 {
+            msg!("[DEV] transferring {} as governance_fee", govnernace_mint_amount);
             Self::mint_token(
                 lp_mint_account,
                 governance_fee_account,
