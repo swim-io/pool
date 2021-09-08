@@ -332,6 +332,21 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         transaction.sign(&[payer, authority], recent_blockhash);
         banks_client.process_transaction(transaction).await.unwrap();
     }
+
+    pub async fn execute_swap_exact_input(
+        &self,
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        user_accounts_owner: &Keypair,
+        authority: &Keypair,
+        user_token_accounts: &[Keypair; TOKEN_COUNT],
+        token_program_account: &Pubkey,
+        user_lp_token_account: &Pubkey,
+        deposit_amounts: [AmountT; TOKEN_COUNT],
+        minimum_amount: AmountT,
+    ) {
+
+    }
 }
 
 /** Helper fns  **/
