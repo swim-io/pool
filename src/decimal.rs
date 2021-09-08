@@ -23,7 +23,7 @@ use std::{
 };
 use thiserror::Error;
 
-use uint::{construct_uint, unroll};
+use uint::construct_uint;
 construct_uint! {
     #[derive(BorshSerialize, BorshDeserialize, BorshSchema)]
     pub struct U128(2);
@@ -267,27 +267,20 @@ macro_rules! unsigned_decimal {
                 }
                 ret
             }
-
-            //reduce decimals as to eliminate all trailing decimal zeros
-            pub fn normalize(&self) -> Self {
-                if self.decimals == 0 {
-                    return self.clone();
+            //binary search
+            let mut shift = 0;
+            let mut dec = self.decimals;
+            loop {
+                let next_dec = (dec + 1)/2;
+                if self.value % Self::ten_to_the_value_type(shift + dec) == $convert!(0, $value_type) {
+                    shift += next_dec;
+                    dec -= next_dec;
                 }
-                //binary search
-                let mut shift = 0;
-                let mut dec = self.decimals;
-                loop {
-                    dec = (dec + 1) / 2;
-                    if self.value % Self::ten_to_the_value_type(shift + dec) == $convert!(0, $value_type) {
-                        shift += dec;
-                    }
-                    if dec == 1 {
-                        break;
-                    }
+                else {
+                    dec = next_dec;
                 }
-                Self {
-                    value: self.value / Self::ten_to_the_value_type(shift),
-                    decimals: self.decimals - shift,
+                if dec <= 1 {
+                    break;
                 }
             }
 
