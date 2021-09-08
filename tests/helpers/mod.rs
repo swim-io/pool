@@ -33,7 +33,6 @@ pub struct TestPoolAccountInfo<const TOKEN_COUNT: usize> {
     pub governance_fee_keypair: Keypair,
 }
 
-
 impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
     pub fn new() -> Self {
         let pool_keypair = Keypair::new();
@@ -299,14 +298,12 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         (user_token_keypairs, user_lp_token_keypair)
     }
 
-
-
     pub async fn execute_add(
         &self,
         banks_client: &mut BanksClient,
         payer: &Keypair,
         user_accounts_owner: &Keypair,
-        authority: &Keypair, //explicitly passing in authority b/c it can be pool authority or user specified user_transfer_authority
+        authority: &Keypair,
         user_token_accounts: &[Keypair; TOKEN_COUNT],
         token_program_account: &Pubkey,
         user_lp_token_account: &Pubkey,

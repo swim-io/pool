@@ -103,7 +103,7 @@ async fn test_pool_init() {
 }
 
 #[tokio::test]
-async fn test_pool_add_user_transfer_authority() {
+async fn test_pool_add() {
     let mut test = ProgramTest::new(
         "pool",
         pool::id(),
@@ -202,8 +202,10 @@ async fn test_pool_add_user_transfer_authority() {
     println!("expected_user_token_balances: {:?}", expected_user_token_balances);
     println!("user_token_balances_after: {:?}", user_token_balances_after);
     assert_eq!(expected_user_token_balances, user_token_balances_after);
-    let user_lp_token_balance_after = get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    let user_lp_token_balance_after =
+        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
     println!("user_lp_token_balance_after: {:?}", user_lp_token_balance_after);
-    let governance_fee_balance = get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
+    let governance_fee_balance =
+        get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
     println!("governance_fee_balance: {:?}", governance_fee_balance);
 }
