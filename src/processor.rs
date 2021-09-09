@@ -259,8 +259,9 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         let user_token_accounts = Self::get_array(|_| Ok(next_account_info(&mut account_info_iter)?))?;
         msg!("[DEV] checked user_token_accounts");
         let token_program_account = next_account_info(&mut account_info_iter)?;
+
         msg!("[DEV] checked token_program_account");
-        let govnernace_mint_amount = match defi_instruction {
+        let governance_mint_amount = match defi_instruction {
             DeFiInstruction::Add {
                 input_amounts,
                 minimum_mint_amount,
@@ -277,7 +278,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
                 let user_lp_token_account = next_account_info(&mut account_info_iter)?;
 
-                let (mint_amount, govnernace_mint_amount) = Invariant::<TOKEN_COUNT>::add(
+                let (mint_amount, governance_mint_amount) = Invariant::<TOKEN_COUNT>::add(
                     &input_amounts,
                     &pool_balances,
                     pool_state.amp_factor.get(Self::get_current_ts()?),
@@ -313,7 +314,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.nonce,
                 )?;
 
-                govnernace_mint_amount
+                governance_mint_amount
             }
 
             DeFiInstruction::RemoveUniform {
@@ -367,7 +368,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     return Err(ProgramError::InvalidInstructionData);
                 }
 
-                let (output_amount, govnernace_mint_amount) = Invariant::<TOKEN_COUNT>::swap_exact_input(
+                let (output_amount, governance_mint_amount) = Invariant::<TOKEN_COUNT>::swap_exact_input(
                     &exact_input_amounts,
                     output_token_index,
                     &pool_balances,
@@ -403,7 +404,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.nonce,
                 )?;
 
-                govnernace_mint_amount
+                governance_mint_amount
             }
 
             DeFiInstruction::SwapExactOutput {
@@ -424,7 +425,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     return Err(ProgramError::InvalidInstructionData);
                 }
 
-                let (input_amount, govnernace_mint_amount) = Invariant::<TOKEN_COUNT>::swap_exact_output(
+                let (input_amount, governance_mint_amount) = Invariant::<TOKEN_COUNT>::swap_exact_output(
                     input_token_index,
                     &exact_output_amounts,
                     &pool_balances,
@@ -460,7 +461,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     }
                 }
 
-                govnernace_mint_amount
+                governance_mint_amount
             }
 
             DeFiInstruction::RemoveExactBurn {
@@ -475,7 +476,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
                 let user_lp_token_account = next_account_info(&mut account_info_iter)?;
 
-                let (output_amount, govnernace_mint_amount) = Invariant::<TOKEN_COUNT>::remove_exact_burn(
+                let (output_amount, governance_mint_amount) = Invariant::<TOKEN_COUNT>::remove_exact_burn(
                     exact_burn_amount,
                     output_token_index,
                     &pool_balances,
@@ -507,7 +508,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.nonce,
                 )?;
 
-                govnernace_mint_amount
+                governance_mint_amount
             }
 
             DeFiInstruction::RemoveExactOutput {
@@ -526,7 +527,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
                 let user_lp_token_account = next_account_info(&mut account_info_iter)?;
 
-                let (burn_amount, govnernace_mint_amount) = Invariant::<TOKEN_COUNT>::remove_exact_output(
+                let (burn_amount, governance_mint_amount) = Invariant::<TOKEN_COUNT>::remove_exact_output(
                     &exact_output_amounts,
                     &pool_balances,
                     pool_state.amp_factor.get(Self::get_current_ts()?),
@@ -561,16 +562,16 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     }
                 }
 
-                govnernace_mint_amount
+                governance_mint_amount
             }
         };
 
-        if govnernace_mint_amount > 0 {
-            msg!("[DEV] transferring {} as governance_fee", govnernace_mint_amount);
+        if governance_mint_amount > 0 {
+          msg!("[DEV] transferring {} as governance_fee", govnernace_mint_amount);
             Self::mint_token(
                 lp_mint_account,
                 governance_fee_account,
-                govnernace_mint_amount,
+                governance_mint_amount,
                 pool_authority_account,
                 token_program_account,
                 pool_account,
