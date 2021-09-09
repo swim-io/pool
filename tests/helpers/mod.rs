@@ -344,10 +344,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
     ) {
 
         let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
-        let user_token_account_pubkeys = &self.get_token_account_pubkeys();
         for i in 0..TOKEN_COUNT - 1 {
-            let i2 = i as u8;
-            println!("[DEV] approve_delegate {} for {} tokens", i2 , exact_input_amounts[i]);
             approve_delegate(
                 banks_client,
                 payer,

@@ -58,6 +58,17 @@ async fn get_token_balances2<const TOKEN_COUNT: usize>(
     btree
 }
 
+async fn print_user_token_account_owners<const TOKEN_COUNT: usize>(
+    banks_client: &mut BanksClient,
+    token_accounts: [Pubkey; TOKEN_COUNT],
+) {
+    for i in 0..TOKEN_COUNT {
+        let token_account = get_account(banks_client, &token_accounts[i]).await;
+        let spl_token_account_info = Token::unpack_from_slice(token_account.data.as_slice()).unwrap();
+        println!("token_account.key: {} token_account.owner: {} spl_token_account_info.owner: {}", &token_accounts[i], token_account.owner, spl_token_account_info.owner);
+    }
+}
+
 #[tokio::test]
 async fn test_pool_init() {
     let mut test = ProgramTest::new(
@@ -313,14 +324,17 @@ async fn test_pool_swap_exact_input() {
     )
     .await;
 
-    let user_token_balances_after = get_token_balances2(&mut banks_client, user_token_pubkeys).await;
+    print!("user_account_owner: {}, user_transfer_authority: {}", user_accounts_owner.pubkey(), user_transfer_authority.pubkey());
+    print_user_token_account_owners(&mut banks_client, user_token_pubkeys).await;
+    let user_token_balances_after = get_token_balances(&mut banks_client, user_token_pubkeys).await;
+    let user_token_balances_after_tree = get_token_balances2(&mut banks_client, user_token_pubkeys).await;
     let mut expected_user_token_balances_arrvec = ArrayVec::<_, TOKEN_COUNT>::new();
     for i in 0..TOKEN_COUNT {
         expected_user_token_balances_arrvec.push(deposit_tokens_to_mint[i] - deposit_tokens_for_approval[i]);
     }
     let expected_user_token_balances = expected_user_token_balances_arrvec.into_inner().unwrap();
     println!("expected_user_token_balances: {:?}", expected_user_token_balances);
-    println!("user_token_balances_after: {:?}", user_token_balances_after);
+    println!("user_token_balances_after: {:?}", user_token_balances_after_tree);
     //assert_eq!(expected_user_token_balances, user_token_balances_after);
     let user_lp_token_balance_after =
         get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
@@ -366,8 +380,13 @@ async fn test_pool_swap_exact_input() {
         0,
     ).await;
 
-    let user_token_balances_after = get_token_balances(&mut banks_client, user_token_pubkeys).await;
-    println!("user_token_balances_after: {:?}", user_token_balances_after);
+    
+
+    let user_token_balances_after_swap = get_token_balances(&mut banks_client, user_token_pubkeys).await;
+    println!("user_token_balances_after_swap: {:?}", user_token_balances_after_swap);
+    for i in 0..TOKEN_COUNT - 1 {
+        assert_eq!(user_token_balances_after[i] - exact_input_amounts[i], user_token_balances_after_swap[i]);
+    }
 
     let governance_fee_balance = get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
     println!("governance_fee_balance: {:?}", governance_fee_balance);
