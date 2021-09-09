@@ -327,7 +327,7 @@ mod tests {
         let (balances, amp_factor, exact_depth) = (
             [20, 10, 20, 5, 2, 1],
             DecT::from(1),
-            DecimalU128::new(5797595776747225261683921277u128.into(), 26).unwrap()
+            DecimalU128::new(5797595776747225261683921277u128.into(), 26).unwrap(),
         );
 
         let exponent = 6 + 10;
