@@ -246,7 +246,6 @@ pub fn create_swap_exact_input_ix<const TOKEN_COUNT: usize>(
     user_transfer_authority: &Pubkey,
     user_token_accounts: [Pubkey; TOKEN_COUNT],
     token_program_account: &Pubkey,
-    user_lp_token_account: &Pubkey,
     exact_input_amounts: [AmountT; TOKEN_COUNT],
     output_token_index: u8,
     minimum_output_amount: AmountT,
@@ -272,13 +271,13 @@ pub fn create_swap_exact_input_ix<const TOKEN_COUNT: usize>(
     }
     accounts.push(AccountMeta::new_readonly(*token_program_account, false));
 
-    let d = DefiInstruction::<TOKEN_COUNT>::SwapExactInput {
+    let d = DeFiInstruction::<TOKEN_COUNT>::SwapExactInput {
         exact_input_amounts,
         output_token_index,
         minimum_output_amount,
     };
 
-    let data = PoolInstruction::<TOKEN_COUNT>::DefiInstruction(d).try_to_vec()?;
+    let data = PoolInstruction::<TOKEN_COUNT>::DeFiInstruction(d).try_to_vec()?;
     Ok(Instruction {
         program_id: *program_id,
         accounts,

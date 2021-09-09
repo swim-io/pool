@@ -234,7 +234,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         banks_client: &mut BanksClient,
         payer: &Keypair,
         user_accounts_owner: &Keypair,
-        authority: &Pubkey,
+        user_transfer_authority: &Pubkey,
         deposit_tokens_to_mint: [AmountT; TOKEN_COUNT],
         deposit_tokens_for_approval: [AmountT; TOKEN_COUNT],
     ) -> ([Keypair; TOKEN_COUNT], Keypair) {
@@ -275,7 +275,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
                 payer,
                 &recent_blockhash,
                 &user_token_keypair.pubkey(),
-                authority,
+                user_transfer_authority,
                 user_accounts_owner,
                 deposit_tokens_for_approval[i],
             )
@@ -303,7 +303,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         banks_client: &mut BanksClient,
         payer: &Keypair,
         user_accounts_owner: &Keypair,
-        authority: &Keypair,
+        user_transfer_authority: &Keypair,
         user_token_accounts: &[Keypair; TOKEN_COUNT],
         token_program_account: &Pubkey,
         user_lp_token_account: &Pubkey,
@@ -318,7 +318,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
                 *(&self.get_token_account_pubkeys()),
                 &self.lp_mint_keypair.pubkey(),
                 &self.governance_fee_keypair.pubkey(),
-                &authority.pubkey(),
+                &user_transfer_authority.pubkey(),
                 Self::to_key_array(user_token_accounts),
                 token_program_account,
                 user_lp_token_account,
@@ -329,8 +329,37 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
             Some(&payer.pubkey()),
         );
         let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
-        transaction.sign(&[payer, authority], recent_blockhash);
+        transaction.sign(&[payer, user_transfer_authority], recent_blockhash);
         banks_client.process_transaction(transaction).await.unwrap();
+    }
+
+    pub async fn prepare_accounts_for_swap(
+        &self,
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        user_accounts_owner: &Keypair,
+        user_transfer_authority: &Pubkey,
+        user_token_account_pubkeys: &[Pubkey; TOKEN_COUNT],
+        exact_input_amounts: [AmountT; TOKEN_COUNT],
+    ) {
+
+        let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+        let user_token_account_pubkeys = &self.get_token_account_pubkeys();
+        for i in 0..TOKEN_COUNT - 1 {
+            let i2 = i as u8;
+            println!("[DEV] approve_delegate {} for {} tokens", i2 , exact_input_amounts[i]);
+            approve_delegate(
+                banks_client,
+                payer,
+                &recent_blockhash,
+                &user_token_account_pubkeys[i],
+                user_transfer_authority,
+                user_accounts_owner,
+                exact_input_amounts[i],
+            )
+            .await
+            .unwrap();
+        }
     }
 
     pub async fn execute_swap_exact_input(
@@ -341,11 +370,34 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         authority: &Keypair,
         user_token_accounts: &[Keypair; TOKEN_COUNT],
         token_program_account: &Pubkey,
-        user_lp_token_account: &Pubkey,
-        deposit_amounts: [AmountT; TOKEN_COUNT],
-        minimum_amount: AmountT,
+        exact_input_amounts: [AmountT; TOKEN_COUNT],
+        output_token_index: u8,
+        minimum_output_amount: AmountT,
     ) {
+        //let output_token_index = output_token_index as usize;
+        let mut transaction = Transaction::new_with_payer(
+            &[
+                create_swap_exact_input_ix(
+                    &pool::id(),
+                    &self.pool_keypair.pubkey(),
+                    &self.authority,
+                    *(&self.get_token_account_pubkeys()),
+                    &self.lp_mint_keypair.pubkey(),
+                    &self.governance_fee_keypair.pubkey(),
+                    &authority.pubkey(),
+                    Self::to_key_array(user_token_accounts),
+                    token_program_account,
+                    exact_input_amounts,
+                    output_token_index,
+                    minimum_output_amount,
+                )
+                .unwrap()],
+                Some(&payer.pubkey()),
+        );
 
+        let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+        transaction.sign(&[payer, authority], recent_blockhash);
+        banks_client.process_transaction(transaction).await.unwrap();
     }
 }
 
