@@ -567,7 +567,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         };
 
         if governance_mint_amount > 0 {
-          msg!("[DEV] transferring {} as governance_fee", govnernace_mint_amount);
+          msg!("[DEV] transferring {} as governance_fee", governance_mint_amount);
             Self::mint_token(
                 lp_mint_account,
                 governance_fee_account,
