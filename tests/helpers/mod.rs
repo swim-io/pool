@@ -333,7 +333,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         banks_client.process_transaction(transaction).await.unwrap();
     }
 
-    pub async fn prepare_accounts_for_swap(
+    pub async fn prepare_accounts_for_swap_exact_input(
         &self,
         banks_client: &mut BanksClient,
         payer: &Keypair,
@@ -396,6 +396,69 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         transaction.sign(&[payer, authority], recent_blockhash);
         banks_client.process_transaction(transaction).await.unwrap();
     }
+}
+
+pub async fn prepare_accounts_for_swap_exact_output(
+    &self,
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    user_accounts_owner: &Keypair,
+    user_transfer_authority: &Pubkey,
+    user_token_account_pubkeys: &[Pubkey; TOKEN_COUNT],
+    maximum_input_amount: AmountT,
+    input_token_index: u8,
+) {
+    let input_token_index = input_token_index as usize;
+    let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+    approve_delegate(
+        banks_client,
+        payer,
+        &recent_blockhash,
+        &user_token_account_pubkeys[input_token_index],
+        user_transfer_authority,
+        user_accounts_owner,
+        maximum_input_amount,
+    )
+    .await
+    .unwrap();
+}
+
+pub async fn execute_swap_exact_output(
+    &self,
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    user_accounts_owner: &Keypair,
+    authority: &Keypair,
+    user_token_accounts: &[Keypair; TOKEN_COUNT],
+    token_program_account: &Pubkey,
+    maximum_input_amount: AmountT,
+    input_token_index: u8,
+    exact_output_amounts: [AmountT; TOKEN_COUNT],
+) {
+    let input_token_index = input_token_index as usize;
+    let mut transaction = Transaction::new_with_payer(
+        &[
+            create_swap_exact_output_ix(
+                &pool::id(),
+                &self.pool_keypair.pubkey(),
+                &self.authority,
+                *(&self.get_token_account_pubkeys()),
+                &self.lp_mint_keypair.pubkey(),
+                &self.governance_fee_keypair.pubkey(),
+                &authority.pubkey(),
+                Self::to_key_array(user_token_accounts),
+                token_program_account,
+                maximum_input_amount,
+                input_token_index,
+                exact_output_amounts,
+            )
+            .unwrap()],
+            Some(&payer.pubkey()),
+    );
+
+    let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+    transaction.sign(&[payer, authority], recent_blockhash);
+    banks_client.process_transaction(transaction).await.unwrap();
 }
 
 /** Helper fns  **/
