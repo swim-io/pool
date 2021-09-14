@@ -424,6 +424,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 {
                     return Err(ProgramError::InvalidInstructionData);
                 }
+                msg!("[DEV] calculating input_amount & governance_mint_amount");
 
                 let (input_amount, governance_mint_amount) = Invariant::<TOKEN_COUNT>::swap_exact_output(
                     input_token_index,
@@ -435,6 +436,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     lp_total_supply,
                 );
 
+                msg!("[DEV] input_amount: {}, governanace_mint_amount: {}", input_amount, governance_mint_amount);
                 if input_amount > maximum_input_amount {
                     return Err(PoolError::OutsideSpecifiedLimits.into());
                 }
@@ -448,6 +450,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 )?;
 
                 for i in 0..TOKEN_COUNT {
+                    msg!("[DEV] swapping exact_output_amount[{}]: {}", i, exact_output_amounts[i]);
                     if exact_output_amounts[i] > 0 {
                         Self::transfer_pool_token(
                             pool_token_accounts[i],

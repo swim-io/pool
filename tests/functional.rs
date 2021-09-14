@@ -253,9 +253,9 @@ async fn test_pool_swap_exact_input() {
 
     const RESERVE_AMOUNT: u64 = 42;
 
-    let amp_factor = DecimalU64::new(1000, 0).unwrap();
-    let lp_fee = DecimalU64::new(1000, 4).unwrap();
-    let governance_fee = DecimalU64::new(1000, 5).unwrap();
+    let amp_factor = DecimalU64::from(1000);
+    let lp_fee = DecimalU64::from(0);
+    let governance_fee = DecimalU64::from(0);
     let pool = TestPoolAccountInfo::<{ TOKEN_COUNT }>::new();
     pool.init_pool(
         &mut banks_client,
@@ -504,8 +504,7 @@ async fn test_pool_swap_exact_output() {
     let mut exact_output_amounts_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut inc: u64 = 1;
     for i in 0..TOKEN_COUNT - 1 {
-        let approval_amount: u64 = inc * 100;
-        let mint_amount: u64 = approval_amount / 50;
+        let mint_amount: u64 = inc;
         exact_output_amounts_arrayvec.push(mint_amount);
         inc += 1;
     }
@@ -522,7 +521,7 @@ async fn test_pool_swap_exact_output() {
         &user_accounts_owner,
         &user_transfer_authority.pubkey(),
         &user_token_pubkeys,
-        maximum_input_amounts,
+        maximum_input_amount,
         input_token_index,
         
     ).await;
