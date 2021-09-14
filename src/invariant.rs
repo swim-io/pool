@@ -146,16 +146,24 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         }(&pool_balances, &amounts);
         let balances = Self::exclude_index(index, &updated_balances);
         let unknown_balance = Self::calculate_unknown_balance(&balances, initial_depth, amp_factor);
+        use solana_program::msg;
+        msg!("[DEV] balances: {:?} unknown_balance: {:?}", balances, unknown_balance);
         let swapped_amount = Self::difference(unknown_balance, pool_balances[index].into());
         let total_fee = lp_fee + governance_fee;
+        msg!("[DEV] swapped_amount: {:?}, total_fee: {:?}", swapped_amount, total_fee);
         let fee_adjusted_amount =
             if exact_input { DecT::mul } else { DecT::div }(swapped_amount, DecT::from(1) - total_fee).trunc();
+        msg!("[DEV] fee_adjusted_amount: {:?}", fee_adjusted_amount);
         //for some reason rustc isn't smart enough to allow me to use sub_assign/add_assign here:
         updated_balances[index] =
             if exact_input { AmountT::sub } else { AmountT::add }(updated_balances[index], fee_adjusted_amount);
+        msg!("[DEV] updated_balances[{}]: {:?}", index, updated_balances[index]);
         let updated_depth = Self::calculate_depth(&updated_balances, amp_factor);
+        msg!("[DEV] updated_depth: {:?}", updated_depth);
         let governance_mint_amount =
             lp_total_supply * (governance_fee / total_fee) * (updated_depth - initial_depth) / initial_depth;
+        
+        msg!("[DEV] governanace_mint_amount: {:?}", governance_mint_amount);
 
         (fee_adjusted_amount, governance_mint_amount.trunc())
     }
