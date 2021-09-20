@@ -9,12 +9,12 @@ pub fn process_instruction<'a>(
     accounts: &'a [AccountInfo<'a>],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    msg!(
-        "process_instruction: {}: {} accounts, data={:?}",
-        program_id,
-        accounts.len(),
-        instruction_data
-    );
+    // msg!(
+    //     "process_instruction: {}: {} accounts, data={:?}",
+    //     program_id,
+    //     accounts.len(),
+    //     instruction_data
+    // );
 
     let result = Processor::<TOKEN_COUNT>::process(program_id, accounts, instruction_data);
     if let Err(error) = &result {
