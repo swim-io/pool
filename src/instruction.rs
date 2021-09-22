@@ -79,7 +79,7 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     /// at least `minimum_mint_amount` LP tokens
     ///
     /// Accounts expected by this instruction:
-    ///     0. `[w]` The pool state account
+    ///     0. `[]` The pool state account
     ///     1. `[]` pool authority
     ///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
     ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
@@ -92,12 +92,12 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
         input_amounts: [AmountT; TOKEN_COUNT],
         minimum_mint_amount: AmountT,
     },
-    /// Swaps in the exact specified amounts for 
-    /// at least `minimum_out_amount` of the output_token specified 
+    /// Swaps in the exact specified amounts for
+    /// at least `minimum_out_amount` of the output_token specified
     /// by output_token_index
     ///
     /// Accounts expected by this instruction:
-    ///     0. `[w]` The pool state account
+    ///     0. `[]` The pool state account
     ///     1. `[]` pool authority
     ///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
     ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
@@ -114,7 +114,7 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     /// `input_token_index` for the exact_output_amounts
     ///
     /// Accounts expected by this instruction:
-    ///     0. `[w]` The pool state account
+    ///     0. `[]` The pool state account
     ///     1. `[]` pool authority
     ///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
     ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
@@ -127,14 +127,14 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
         input_token_index: u8,
         exact_output_amounts: [AmountT; TOKEN_COUNT],
     },
-    
+
     /// Withdraw at least the number of tokens specified by `minimum_output_amounts` by
     /// burning `exact_burn_amount` of LP tokens
-    /// Final withdrawal amounts are based on current deposit ratios 
-    /// 
+    /// Final withdrawal amounts are based on current deposit ratios
+    ///
     ///
     /// Accounts expected by this instruction:
-    ///     0. `[w]` The pool state account
+    ///     0. `[]` The pool state account
     ///     1. `[]` pool authority
     ///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
     ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
@@ -149,10 +149,10 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     },
     /// Withdraw at least `minimum_output_amount` of output token specified by `output_token_index` by
     /// burning `exact_burn_amount` of LP tokens
-    /// 
+    ///
     ///
     /// Accounts expected by this instruction:
-    ///     0. `[w]` The pool state account
+    ///     0. `[]` The pool state account
     ///     1. `[]` pool authority
     ///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
     ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
@@ -170,7 +170,7 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     /// by burning at most `maximum_burn_amounts` of LP tokens
     ///
     /// Accounts expected by this instruction:
-    ///     0. `[w]` The pool state account
+    ///     0. `[]` The pool state account
     ///     1. `[]` pool authority
     ///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
     ///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
@@ -211,7 +211,7 @@ pub fn create_add_ix<const TOKEN_COUNT: usize>(
     accounts.push(AccountMeta::new(*governance_fee_account, false));
 
     // used from SPL binary-oracle-pair. not actually necessary since the implementation only supports
-    //  that using a separate keypair 
+    //  that using a separate keypair
     accounts.push(AccountMeta::new_readonly(
         *user_transfer_authority,
         authority != user_transfer_authority,
@@ -261,7 +261,7 @@ pub fn create_swap_exact_input_ix<const TOKEN_COUNT: usize>(
     accounts.push(AccountMeta::new(*governance_fee_account, false));
 
     // used from SPL binary-oracle-pair. not actually necessary since the implementation only supports
-    //  that using a separate keypair 
+    //  that using a separate keypair
     accounts.push(AccountMeta::new_readonly(
         *user_transfer_authority,
         authority != user_transfer_authority,
@@ -275,6 +275,56 @@ pub fn create_swap_exact_input_ix<const TOKEN_COUNT: usize>(
         exact_input_amounts,
         output_token_index,
         minimum_output_amount,
+    };
+
+    let data = PoolInstruction::<TOKEN_COUNT>::DeFiInstruction(d).try_to_vec()?;
+    Ok(Instruction {
+        program_id: *program_id,
+        accounts,
+        data,
+    })
+}
+
+/// Creates a `RemoveUniform` DefiInstruction
+pub fn create_remove_uniform_ix<const TOKEN_COUNT: usize>(
+    program_id: &Pubkey,
+    pool: &Pubkey,
+    authority: &Pubkey,
+    pool_token_accounts: [Pubkey; TOKEN_COUNT],
+    lp_mint: &Pubkey,
+    governance_fee_account: &Pubkey,
+    user_transfer_authority: &Pubkey,
+    user_token_accounts: [Pubkey; TOKEN_COUNT],
+    token_program_account: &Pubkey,
+    user_lp_token_account: &Pubkey,
+    exact_burn_amount: AmountT,
+    minimum_output_amounts: [AmountT; TOKEN_COUNT],
+) -> Result<Instruction, ProgramError> {
+    let mut accounts = vec![
+        AccountMeta::new_readonly(*pool, false),
+        AccountMeta::new_readonly(*authority, false),
+    ];
+    for i in 0..TOKEN_COUNT {
+        accounts.push(AccountMeta::new(pool_token_accounts[i], false));
+    }
+    accounts.push(AccountMeta::new(*lp_mint, false));
+    accounts.push(AccountMeta::new(*governance_fee_account, false));
+
+    // used from SPL binary-oracle-pair. not actually necessary since the implementation only supports
+    //  that using a separate keypair
+    accounts.push(AccountMeta::new_readonly(
+        *user_transfer_authority,
+        authority != user_transfer_authority,
+    ));
+    for i in 0..TOKEN_COUNT {
+        accounts.push(AccountMeta::new(user_token_accounts[i], false));
+    }
+    accounts.push(AccountMeta::new_readonly(*token_program_account, false));
+    accounts.push(AccountMeta::new(*user_lp_token_account, false));
+
+    let d = DeFiInstruction::<TOKEN_COUNT>::RemoveUniform {
+        exact_burn_amount,
+        minimum_output_amounts,
     };
 
     let data = PoolInstruction::<TOKEN_COUNT>::DeFiInstruction(d).try_to_vec()?;
