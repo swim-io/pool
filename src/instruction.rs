@@ -392,7 +392,7 @@ pub fn create_remove_exact_burn_ix<const TOKEN_COUNT: usize>(
     let data = PoolInstruction::<TOKEN_COUNT>::DeFiInstruction(d).try_to_vec()?;
     Ok(Instruction {
         program_id: *program_id,
-          accounts,
+        accounts,
         data,
     })
 }

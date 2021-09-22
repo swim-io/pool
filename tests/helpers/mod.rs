@@ -419,7 +419,6 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         .unwrap();
         // don't need to approve pool authority to transfer tokens out of
         // pool token accounts since pool authority is already the owner
-
     }
 
     pub async fn execute_remove_uniform(

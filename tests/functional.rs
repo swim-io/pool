@@ -528,9 +528,13 @@ async fn test_pool_remove_uniform() {
         user_lp_token_balance_after_add - exact_burn_amount,
         user_lp_token_balance_after_remove
     );
-    let user_token_balances_after_remove = get_token_balances::<{TOKEN_COUNT}>(&mut banks_client, user_token_pubkeys).await;
+    let user_token_balances_after_remove =
+        get_token_balances::<{ TOKEN_COUNT }>(&mut banks_client, user_token_pubkeys).await;
     for i in 0..TOKEN_COUNT {
-        println!("[DEV] user_token_balances_after_remove[{}]: {}", i, user_token_balances_after_remove[i]);
-        assert!(user_token_balances_before[i] + minimum_output_amounts[i] >= user_token_balances_after_remove[i]);        
+        println!(
+            "[DEV] user_token_balances_after_remove[{}]: {}",
+            i, user_token_balances_after_remove[i]
+        );
+        assert!(user_token_balances_before[i] + minimum_output_amounts[i] >= user_token_balances_after_remove[i]);
     }
 }
