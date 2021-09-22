@@ -335,6 +335,68 @@ pub fn create_remove_uniform_ix<const TOKEN_COUNT: usize>(
     })
 }
 
+/// Creates a `RemoveExactBurn` DefiInstruction
+/// Accounts expected by this instruction:
+///     0. `[]` The pool state account
+///     1. `[]` pool authority
+///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
+///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
+///     4. ..4 + TOKEN_COUNT `[w]` governance_fee_account
+///     5. ..5 + TOKEN_COUNT `[s]` user transfer authority account
+///     6. ..6 + TOKEN_COUNT `[w]` user token accounts
+///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
+///     8. ..7 + (2 * TOKEN_COUNT) `[w]` user LP token account to withdraw/burn from  
+pub fn create_remove_exact_burn_ix<const TOKEN_COUNT: usize>(
+    program_id: &Pubkey,
+    pool: &Pubkey,
+    authority: &Pubkey,
+    pool_token_accounts: [Pubkey; TOKEN_COUNT],
+    lp_mint: &Pubkey,
+    governance_fee_account: &Pubkey,
+    user_transfer_authority: &Pubkey,
+    user_token_accounts: [Pubkey; TOKEN_COUNT],
+    token_program_account: &Pubkey,
+    user_lp_token_account: &Pubkey,
+    exact_burn_amount: AmountT,
+    output_token_index: u8,
+    minimum_output_amount: AmountT,
+) -> Result<Instruction, ProgramError> {
+    let mut accounts = vec![
+        AccountMeta::new_readonly(*pool, false),
+        AccountMeta::new_readonly(*authority, false),
+    ];
+    for i in 0..TOKEN_COUNT {
+        accounts.push(AccountMeta::new(pool_token_accounts[i], false));
+    }
+    accounts.push(AccountMeta::new(*lp_mint, false));
+    accounts.push(AccountMeta::new(*governance_fee_account, false));
+
+    // used from SPL binary-oracle-pair. not actually necessary since the implementation only supports
+    //  that using a separate keypair
+    accounts.push(AccountMeta::new_readonly(
+        *user_transfer_authority,
+        authority != user_transfer_authority,
+    ));
+    for i in 0..TOKEN_COUNT {
+        accounts.push(AccountMeta::new(user_token_accounts[i], false));
+    }
+    accounts.push(AccountMeta::new_readonly(*token_program_account, false));
+    accounts.push(AccountMeta::new(*user_lp_token_account, false));
+
+    let d = DeFiInstruction::<TOKEN_COUNT>::RemoveExactBurn {
+        exact_burn_amount,
+        output_token_index,
+        minimum_output_amount,
+    };
+
+    let data = PoolInstruction::<TOKEN_COUNT>::DeFiInstruction(d).try_to_vec()?;
+    Ok(Instruction {
+        program_id: *program_id,
+          accounts,
+        data,
+    })
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub enum GovernanceInstruction<const TOKEN_COUNT: usize> {
     PrepareFeeChange {
