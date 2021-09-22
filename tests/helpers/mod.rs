@@ -342,7 +342,6 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         user_token_account_pubkeys: &[Pubkey; TOKEN_COUNT],
         exact_input_amounts: [AmountT; TOKEN_COUNT],
     ) {
-
         let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
         for i in 0..TOKEN_COUNT - 1 {
             approve_delegate(
@@ -373,23 +372,85 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
     ) {
         //let output_token_index = output_token_index as usize;
         let mut transaction = Transaction::new_with_payer(
-            &[
-                create_swap_exact_input_ix(
-                    &pool::id(),
-                    &self.pool_keypair.pubkey(),
-                    &self.authority,
-                    *(&self.get_token_account_pubkeys()),
-                    &self.lp_mint_keypair.pubkey(),
-                    &self.governance_fee_keypair.pubkey(),
-                    &authority.pubkey(),
-                    Self::to_key_array(user_token_accounts),
-                    token_program_account,
-                    exact_input_amounts,
-                    output_token_index,
-                    minimum_output_amount,
-                )
-                .unwrap()],
-                Some(&payer.pubkey()),
+            &[create_swap_exact_input_ix(
+                &pool::id(),
+                &self.pool_keypair.pubkey(),
+                &self.authority,
+                *(&self.get_token_account_pubkeys()),
+                &self.lp_mint_keypair.pubkey(),
+                &self.governance_fee_keypair.pubkey(),
+                &authority.pubkey(),
+                Self::to_key_array(user_token_accounts),
+                token_program_account,
+                exact_input_amounts,
+                output_token_index,
+                minimum_output_amount,
+            )
+            .unwrap()],
+            Some(&payer.pubkey()),
+        );
+
+        let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+        transaction.sign(&[payer, authority], recent_blockhash);
+        banks_client.process_transaction(transaction).await.unwrap();
+    }
+
+    pub async fn prepare_accounts_for_remove_uniform(
+        &self,
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        user_accounts_owner: &Keypair,
+        user_transfer_authority: &Pubkey,
+        user_lp_token_account: &Pubkey,
+        exact_burn_amount: AmountT,
+    ) {
+        let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+        //approve user_transfer_authority to burn exact_burn_amount of user LP token
+        approve_delegate(
+            banks_client,
+            payer,
+            &recent_blockhash,
+            &user_lp_token_account,
+            user_transfer_authority,
+            user_accounts_owner,
+            exact_burn_amount,
+        )
+        .await
+        .unwrap();
+        // don't need to approve pool authority to transfer tokens out of
+        // pool token accounts since pool authority is already the owner
+
+    }
+
+    pub async fn execute_remove_uniform(
+        &self,
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        user_accounts_owner: &Keypair,
+        authority: &Keypair,
+        user_token_accounts: &[Keypair; TOKEN_COUNT],
+        token_program_account: &Pubkey,
+        user_lp_token_account: &Pubkey,
+        exact_burn_amount: AmountT,
+        minimum_output_amounts: [AmountT; TOKEN_COUNT],
+    ) {
+        let mut transaction = Transaction::new_with_payer(
+            &[create_remove_uniform_ix(
+                &pool::id(),
+                &self.pool_keypair.pubkey(),
+                &self.authority,
+                *(&self.get_token_account_pubkeys()),
+                &self.lp_mint_keypair.pubkey(),
+                &self.governance_fee_keypair.pubkey(),
+                &authority.pubkey(),
+                Self::to_key_array(user_token_accounts),
+                token_program_account,
+                user_lp_token_account,
+                exact_burn_amount,
+                minimum_output_amounts,
+            )
+            .unwrap()],
+            Some(&payer.pubkey()),
         );
 
         let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
