@@ -395,7 +395,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         banks_client.process_transaction(transaction).await.unwrap();
     }
 
-    pub async fn prepare_accounts_for_remove_uniform(
+    pub async fn prepare_accounts_for_remove(
         &self,
         banks_client: &mut BanksClient,
         payer: &Keypair,
@@ -447,6 +447,44 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
                 user_lp_token_account,
                 exact_burn_amount,
                 minimum_output_amounts,
+            )
+            .unwrap()],
+            Some(&payer.pubkey()),
+        );
+
+        let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+        transaction.sign(&[payer, authority], recent_blockhash);
+        banks_client.process_transaction(transaction).await.unwrap();
+    }
+
+    pub async fn execute_remove_exact_burn(
+        &self,
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        user_accounts_owner: &Keypair,
+        authority: &Keypair,
+        user_token_accounts: &[Keypair; TOKEN_COUNT],
+        token_program_account: &Pubkey,
+        user_lp_token_account: &Pubkey,
+        exact_burn_amount: AmountT,
+        output_token_index: u8,
+        minimum_output_amount: AmountT,
+    ) {
+        let mut transaction = Transaction::new_with_payer(
+            &[create_remove_exact_burn_ix(
+                &pool::id(),
+                &self.pool_keypair.pubkey(),
+                &self.authority,
+                *(&self.get_token_account_pubkeys()),
+                &self.lp_mint_keypair.pubkey(),
+                &self.governance_fee_keypair.pubkey(),
+                &authority.pubkey(),
+                Self::to_key_array(user_token_accounts),
+                token_program_account,
+                user_lp_token_account,
+                exact_burn_amount,
+                output_token_index,
+                minimum_output_amount,
             )
             .unwrap()],
             Some(&payer.pubkey()),

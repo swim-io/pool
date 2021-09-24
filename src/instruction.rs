@@ -149,6 +149,7 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     },
     /// Withdraw at least `minimum_output_amount` of output token specified by `output_token_index` by
     /// burning `exact_burn_amount` of LP tokens
+    /// "WithdrawOne"
     ///
     ///
     /// Accounts expected by this instruction:
@@ -336,16 +337,6 @@ pub fn create_remove_uniform_ix<const TOKEN_COUNT: usize>(
 }
 
 /// Creates a `RemoveExactBurn` DefiInstruction
-/// Accounts expected by this instruction:
-///     0. `[]` The pool state account
-///     1. `[]` pool authority
-///     2. ..2 + TOKEN_COUNT `[w]` pool's token accounts
-///     3. ..3 + TOKEN_COUNT `[w]` LP Token Mint
-///     4. ..4 + TOKEN_COUNT `[w]` governance_fee_account
-///     5. ..5 + TOKEN_COUNT `[s]` user transfer authority account
-///     6. ..6 + TOKEN_COUNT `[w]` user token accounts
-///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
-///     8. ..7 + (2 * TOKEN_COUNT) `[w]` user LP token account to withdraw/burn from  
 pub fn create_remove_exact_burn_ix<const TOKEN_COUNT: usize>(
     program_id: &Pubkey,
     pool: &Pubkey,
