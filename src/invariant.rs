@@ -269,14 +269,15 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         let numerator_fixed = (depth / n).upcast_mul(depth_div_amp_nn * recip_decay);
         //can't sub depth from denominator_fixed because overall result could turn negative
         let denominator_fixed = input_sum + depth_div_amp_nn; //b = S_ + D / Ann
-                                                              //msg!("[DEV] numerator_fixed: {:?}, denominator_fixed: {:?}", numerator_fixed, denominator_fixed);
-                                                              // println!("            depth: {}", depth);
-                                                              // println!("          depth/n: {}", depth/n);
-                                                              // println!(" depth_div_amp_nn: {}", depth_div_amp_nn);
-                                                              // println!("      recip_decay: {}", recip_decay);
-                                                              // println!("  multiply prev 2: {}", depth_div_amp_nn*recip_decay);
-                                                              // println!("  numerator_fixed: {}", numerator_fixed);
-                                                              // println!("denominator_fixed: {}", denominator_fixed);
+
+        //msg!("[DEV] numerator_fixed: {:?}, denominator_fixed: {:?}", numerator_fixed, denominator_fixed);
+        // println!("            depth: {}", depth);
+        // println!("          depth/n: {}", depth/n);
+        // println!(" depth_div_amp_nn: {}", depth_div_amp_nn);
+        // println!("      recip_decay: {}", recip_decay);
+        // println!("  multiply prev 2: {}", depth_div_amp_nn*recip_decay);
+        // println!("  numerator_fixed: {}", numerator_fixed);
+        // println!("denominator_fixed: {}", denominator_fixed);
 
         let mut previous_unknown_balance = DecT::from(0);
         let mut unknown_balance = depth;
