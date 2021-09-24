@@ -13,6 +13,8 @@ use std::{
     vec::Vec,
 };
 
+use solana_program::msg; //used for debugging
+
 use arrayvec::ArrayVec;
 
 type AmountT = u64;
@@ -95,14 +97,33 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         governance_fee: DecT,
         lp_total_supply: AmountT,
     ) -> (AmountT, AmountT) {
+        // msg!("[DEV]
+        // remove_exact_burn(
+        //     burn_amount:{},
+        //     output_index: {},
+        //     pool_balances: {:?},
+        //     amp_factor: {:?},
+        //     lp_fee: {:?},
+        //     governanace_fee: {:?},
+        //     lp_total_supply: {}
+        // )", burn_amount, output_index, pool_balances, amp_factor, lp_fee, governance_fee, lp_total_supply);
         let governance_mint_amount = burn_amount * governance_fee;
         let initial_depth = Self::calculate_depth(pool_balances, amp_factor);
         let total_fee = lp_fee + governance_fee;
+        // msg!("[DEV] governance_mint_amount: {:?}, initial_depth: {:?}, total_fee: {:?}", governance_mint_amount, initial_depth, total_fee);
+
         //divided by two because it's only half a swap!
         let fee_adjusted_burn_amount = burn_amount * (1 - total_fee / 2);
         let updated_depth = DecT::from(fee_adjusted_burn_amount) / lp_total_supply * initial_depth;
+        // msg!("[DEV] fee_adjusted_burn_amount: {:?}, updated_depth: {:?}", fee_adjusted_burn_amount, updated_depth);
+
         let known_balances = Self::exclude_index(output_index, pool_balances);
+        // msg!("[DEV] known_balances: {:?}", known_balances);
+
         let unknown_balance = Self::calculate_unknown_balance(&known_balances, updated_depth, amp_factor);
+        // msg!("[DEV] output_amount =
+        //             unknown_balance: {:?}
+        //             - pool_balances[{}]: {:?}", unknown_balance, output_index, pool_balances[output_index]);
         let output_amount = unknown_balance - pool_balances[output_index];
 
         (output_amount.trunc(), governance_mint_amount.trunc())
@@ -224,22 +245,32 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         depth: DecT,
         amp_factor: DecT,
     ) -> DecT {
+        // msg!("[DEV] calculate_unknown_balance(
+        //     known_balances: {:?},
+        //     depth: {:?},
+        //     amp_factor: {:?},
+        // ),", known_balances, depth, amp_factor);
         let n: AmountT = (known_balances.len() + 1) as AmountT;
         debug_assert!(n == TOKEN_COUNT as AmountT);
         let input_sum: DecT = known_balances
             .iter()
             .sum::<AmountT>() //TODO same as above: why is the AmountT type annotation here necessary?
             .into();
-        let amp_n_to_the_n = amp_factor * (n.pow(n as u32)) as AmountT;
-        let depth_div_amp_nn = depth / amp_n_to_the_n;
+        // msg!("[DEV] n: {}, input_sum: {:?}", n, input_sum);
+        let amp_n_to_the_n = amp_factor * (n.pow(n as u32)) as AmountT; //Ann
+        let depth_div_amp_nn = depth / amp_n_to_the_n; // D / Ann
         let recip_decay: DecT = known_balances
             .iter()
             .map(|input_balance| depth / (n * DecT::from(*input_balance)))
             .product();
 
+        //msg!("[DEV] amp_n_to_the_n: {:?}, depth_div_amp_nn: {:?}, recip_decay: {:?}", amp_n_to_the_n, depth_div_amp_nn, recip_decay);
+
         let numerator_fixed = (depth / n).upcast_mul(depth_div_amp_nn * recip_decay);
         //can't sub depth from denominator_fixed because overall result could turn negative
-        let denominator_fixed = input_sum + depth_div_amp_nn;
+        let denominator_fixed = input_sum + depth_div_amp_nn; //b = S_ + D / Ann
+
+        //msg!("[DEV] numerator_fixed: {:?}, denominator_fixed: {:?}", numerator_fixed, denominator_fixed);
         // println!("            depth: {}", depth);
         // println!("          depth/n: {}", depth/n);
         // println!(" depth_div_amp_nn: {}", depth_div_amp_nn);
@@ -250,17 +281,22 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
 
         let mut previous_unknown_balance = DecT::from(0);
         let mut unknown_balance = depth;
+        //msg!("[DEV] previous_unknwon_balance: {:?}, unknown_balance: {:?}", previous_unknown_balance, unknown_balance);
         while Self::difference(unknown_balance, previous_unknown_balance) > 1 {
             previous_unknown_balance = unknown_balance;
+            //msg!("[DEV] previous_unknwon_balance: {:?}", previous_unknown_balance);
             let numerator = unknown_balance.upcast_mul(unknown_balance) + numerator_fixed;
             let denominator = (2 * unknown_balance + denominator_fixed) - depth;
-
+            //msg!("[DEV] num: {:?}, denom: {:?}", numerator, denominator);
             unknown_balance = DecT::try_from(numerator / LargerDecT::from(denominator)).unwrap();
+            //msg!("[DEV] unknown_balance: {:?}", unknown_balance);
+
             // println!("  num: {}", numerator);
             // println!("denom: {}", denominator);
             // println!(" quot: {}", unknown_balance);
         }
 
+        // msg!("[DEV] returning unknown_balance: {}", unknown_balance);
         unknown_balance
     }
 
