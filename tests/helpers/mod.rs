@@ -1,6 +1,6 @@
 // use assert_matches::*;
 use arrayvec::ArrayVec;
-use pool::{decimal::*, instruction::*};
+use pool::{decimal::*, instruction::*, invariant::*};
 use solana_program::{
     account_info::AccountInfo, hash::Hash, program_option::COption, program_pack::Pack, pubkey::Pubkey,
     system_instruction,
@@ -17,6 +17,7 @@ use spl_token::{
     instruction::approve,
     state::{Account as Token, AccountState, Mint},
 };
+use std::collections::BTreeMap;
 
 type AmountT = u64;
 type DecT = DecimalU64;
@@ -69,6 +70,17 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         Self::to_key_array(&self.token_account_keypairs)
     }
 
+    pub async fn get_token_account_balances(&self, banks_client: &mut BanksClient) -> [AmountT; TOKEN_COUNT] {
+        let token_account_pubkeys = self.get_token_account_pubkeys();
+        get_token_balances(banks_client, token_account_pubkeys).await
+    }
+
+    pub async fn get_depth(&self, banks_client: &mut BanksClient, amp_factor: DecT) -> DecT {
+        let token_account_balances: [AmountT; TOKEN_COUNT] = self.get_token_account_balances(banks_client).await;
+        //let pool_state = Self::deserialize_pool_state(banks_client).unwrap();
+        Invariant::calculate_depth(&token_account_balances, amp_factor)
+    }
+
     fn to_key_array(account_slice: &[Keypair; TOKEN_COUNT]) -> [Pubkey; TOKEN_COUNT] {
         account_slice
             .iter()
@@ -77,6 +89,24 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
             .into_inner()
             .unwrap()
     }
+
+    // fn deserialize_pool_state(
+    //     &self,
+    //     banks_client: &mut BanksClient,
+    // ) -> Result<PoolState<TOKEN_COUNT>, ProgramError> {
+    //     let pool_account = get_account(banks_client, self.pool_keypair.pubkey()).await;
+    //     if pool_account.owner != pool::id() {
+    //         return Err(ProgramError::IllegalOwner);
+    //     }
+
+    //     let pool_state = PoolState::<TOKEN_COUNT>::deserialize(&mut pool_account.data.as_slice())?;
+
+    //     if !pool_state.is_initialized() {
+    //         return Err(ProgramError::UninitializedAccount);
+    //     }
+
+    //     Ok(pool_state)
+    // }
 
     pub async fn init_pool(
         &self,
@@ -577,4 +607,61 @@ pub async fn approve_delegate(
     transaction.sign(&[payer, source_owner], *recent_blockhash);
     banks_client.process_transaction(transaction).await?;
     Ok(())
+}
+
+pub async fn get_account(banks_client: &mut BanksClient, pubkey: &Pubkey) -> Account {
+    banks_client
+        .get_account(*pubkey)
+        .await
+        .expect("account not found")
+        .expect("account empty")
+}
+
+pub async fn get_mint_state(banks_client: &mut BanksClient, pubkey: &Pubkey) -> Mint {
+    let acct = get_account(banks_client, pubkey).await;
+    Mint::unpack_from_slice(acct.data.as_slice()).unwrap()
+}
+
+pub async fn get_token_balance(banks_client: &mut BanksClient, token_account_pubkey: Pubkey) -> u64 {
+    let token_account = get_account(banks_client, &token_account_pubkey).await;
+    let account_info = Token::unpack_from_slice(token_account.data.as_slice()).unwrap();
+    account_info.amount
+}
+
+pub async fn get_token_balances<const TOKEN_COUNT: usize>(
+    banks_client: &mut BanksClient,
+    token_accounts: [Pubkey; TOKEN_COUNT],
+) -> [AmountT; TOKEN_COUNT] {
+    let mut token_accounts_arrvec = ArrayVec::<_, TOKEN_COUNT>::new();
+    for i in 0..TOKEN_COUNT {
+        token_accounts_arrvec.push(get_token_balance(banks_client, token_accounts[i]).await);
+    }
+    token_accounts_arrvec.into_inner().unwrap()
+}
+
+pub async fn get_token_balances_map<const TOKEN_COUNT: usize>(
+    banks_client: &mut BanksClient,
+    token_accounts: [Pubkey; TOKEN_COUNT],
+) -> BTreeMap<Pubkey, u64> {
+    let mut btree = BTreeMap::<Pubkey, u64>::new();
+    for i in 0..TOKEN_COUNT {
+        let token_account = get_account(banks_client, &token_accounts[i]).await;
+        let account_info = Token::unpack_from_slice(token_account.data.as_slice()).unwrap();
+        btree.insert(token_accounts[i], account_info.amount);
+    }
+    btree
+}
+
+pub async fn print_user_token_account_owners<const TOKEN_COUNT: usize>(
+    banks_client: &mut BanksClient,
+    token_accounts: [Pubkey; TOKEN_COUNT],
+) {
+    for i in 0..TOKEN_COUNT {
+        let token_account = get_account(banks_client, &token_accounts[i]).await;
+        let spl_token_account_info = Token::unpack_from_slice(token_account.data.as_slice()).unwrap();
+        println!(
+            "token_account.key: {} token_account.owner: {} spl_token_account_info.owner: {}",
+            &token_accounts[i], token_account.owner, spl_token_account_info.owner
+        );
+    }
 }

@@ -4,7 +4,7 @@ pub mod decimal;
 pub mod entrypoint;
 pub mod error;
 pub mod instruction;
-mod invariant;
+pub mod invariant;
 pub mod pool_fee;
 pub mod processor;
 pub mod state;

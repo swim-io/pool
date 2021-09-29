@@ -213,7 +213,7 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         (lp_amount.trunc(), governance_mint_amount.trunc())
     }
 
-    fn calculate_depth(pool_balances: &[AmountT; TOKEN_COUNT], amp_factor: DecT) -> DecT {
+    pub fn calculate_depth(pool_balances: &[AmountT; TOKEN_COUNT], amp_factor: DecT) -> DecT {
         let n = TOKEN_COUNT as AmountT;
         let balances_sum: DecT = pool_balances.iter().sum::<AmountT>().into(); //TODO more instances below: why is the AmountT type annotation here necessary?
         let amp_n_to_the_n = amp_factor * (n.pow(n as u32)) as AmountT;
