@@ -18,3 +18,7 @@ $ cargo test-bpf -- --show-output
 $ cargo test-bpf -- --test test_pool_init --show-output
 ```
 
+# Fuzzing
+- workaround for honggfuzz macos x incompatability found [here](https://github.com/ilmoi/rebuild-token-vesting)
+  - TLDR: use docker 
+- docker run -it -v $(pwd):/app/ pool bash

@@ -6,7 +6,7 @@ use arrayvec::ArrayVec;
 use borsh::de::BorshDeserialize;
 use helpers::*;
 use pool::decimal::*;
-use pool::entrypoint::TOKEN_COUNT;
+use pool::TOKEN_COUNT;
 use solana_program::program_pack::{IsInitialized, Pack};
 use solana_program_test::*;
 use solana_sdk::{
