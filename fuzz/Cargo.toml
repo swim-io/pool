@@ -1,18 +1,22 @@
 [package]
-name = "pool"
+name = "pool-fuzz"
 version = "0.1.0"
-authors = ["z0ji <zoji@maelstrom.finance>"]
+description = "Pool Protocol Fuzzer"
+authors = ["rowdyear <rowdyear@maelstrom.finance>"]
 edition = "2018"
-
-[features]
-no-entrypoint = []
-test-bpf = []
-fuzz = ["arbitrary", "roots"]
+publish = false
 
 [dependencies]
+honggfuzz = { version = "0.5.54" }
+arbitrary = { version = "1.0.2", features = ["derive"] }
+
+#pool related dependencies
+pool = {path = "..", features = ["fuzz", "no-entrypoint"]}
 #solana related dependencies
 solana-program = "1.7.10"
 spl-token = { version = "3.1.1", features = ["no-entrypoint"] }
+solana-program-test = "1.7.4"
+solana-sdk = "1.7.4"
 
 #serializiation/deserialzation
 borsh = { version = "0.9.1", features = ["const-generics"] }
@@ -31,12 +35,10 @@ num-derive = "0.3"
 #misc
 arrayvec = "0.7.1"
 
-arbitrary = { version = "1.0.2", features = ["derive"], optional = true}
-roots = { version = "0.0.7", optional = true }
+tokio = { version = "1.0", features = ["macros"]}
 
-[dev-dependencies]
-solana-program-test = "1.7.4"
-solana-sdk = "1.7.4"
-
-[lib]
-crate-type = ["cdylib", "lib"]
+[[bin]]
+name = "pool_fuzz"
+path = "src/instructions.rs"
+test = false
+doc = false
