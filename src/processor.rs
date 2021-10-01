@@ -23,13 +23,12 @@ use crate::{
     amp_factor::AmpFactor,
     decimal::DecimalU64,
     error::PoolError,
-    instruction::{DeFiInstruction, GovernanceInstruction, PoolInstruction, PoolInstruction::*},
+    instruction::{DeFiInstruction, GovernanceInstruction, PoolInstruction},
     invariant::Invariant,
     pool_fee::PoolFee,
     state::PoolState,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::msg;
 //Note - using this b/c of not all bytes read error. found from using this - https://brson.github.io/2021/06/08/rust-on-solana
 // use solana_program::borsh::try_from_slice_unchecked;
 const ENACT_DELAY: UnixTimestamp = 3 * 86400;
@@ -199,9 +198,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 fee_transition_ts: 0,
             },
             &pool_account,
-        );
-        //msg!("[DEV] Serialized pool");
-        Ok(())
+        )
     }
 
     fn process_defi_instruction(
@@ -285,7 +282,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.lp_fee.get(),
                     pool_state.governance_fee.get(),
                     lp_total_supply,
-                );
+                )?;
 
                 if mint_amount < minimum_mint_amount {
                     return Err(PoolError::OutsideSpecifiedLimits.into());
@@ -376,7 +373,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.lp_fee.get(),
                     pool_state.governance_fee.get(),
                     lp_total_supply,
-                );
+                )?;
 
                 if output_amount < minimum_output_amount {
                     return Err(PoolError::OutsideSpecifiedLimits.into());
@@ -433,7 +430,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.lp_fee.get(),
                     pool_state.governance_fee.get(),
                     lp_total_supply,
-                );
+                )?;
 
                 if input_amount > maximum_input_amount {
                     return Err(PoolError::OutsideSpecifiedLimits.into());
@@ -484,7 +481,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.lp_fee.get(),
                     pool_state.governance_fee.get(),
                     lp_total_supply,
-                );
+                )?;
 
                 if output_amount < minimum_output_amount {
                     return Err(PoolError::OutsideSpecifiedLimits.into());
@@ -534,7 +531,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.lp_fee.get(),
                     pool_state.governance_fee.get(),
                     lp_total_supply,
-                );
+                )?;
 
                 if burn_amount > maximum_burn_amount {
                     return Err(PoolError::OutsideSpecifiedLimits.into());

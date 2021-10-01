@@ -51,6 +51,8 @@ pub enum PoolError {
     OutsideSpecifiedLimits,
     #[error("Initial add to pool must include all tokens")]
     AddRequiresAllTokens,
+    #[error("Remove can't completed due to the approximative nature of fee math implementation")]
+    ImpossibleRemove,
 }
 
 impl From<PoolError> for ProgramError {

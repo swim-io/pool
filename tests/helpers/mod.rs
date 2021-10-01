@@ -78,6 +78,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
     pub async fn get_depth(&self, banks_client: &mut BanksClient, amp_factor: DecT) -> DecT {
         let token_account_balances: [AmountT; TOKEN_COUNT] = self.get_token_account_balances(banks_client).await;
         //let pool_state = Self::deserialize_pool_state(banks_client).unwrap();
+        //println!("######################################## {:?}", token_account_balances);
         Invariant::calculate_depth(&token_account_balances, amp_factor)
     }
 
