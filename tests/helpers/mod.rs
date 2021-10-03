@@ -79,7 +79,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         let token_account_balances: [AmountT; TOKEN_COUNT] = self.get_token_account_balances(banks_client).await;
         //let pool_state = Self::deserialize_pool_state(banks_client).unwrap();
         //println!("######################################## {:?}", token_account_balances);
-        Invariant::calculate_depth(&token_account_balances, amp_factor)
+        DecT::from(Invariant::calculate_depth(&token_account_balances, amp_factor))
     }
 
     fn to_key_array(account_slice: &[Keypair; TOKEN_COUNT]) -> [Pubkey; TOKEN_COUNT] {
