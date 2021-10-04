@@ -4,6 +4,11 @@ version = "0.1.0"
 authors = ["z0ji <zoji@maelstrom.finance>"]
 edition = "2018"
 
+[workspace]
+members = [
+    "fuzz"
+]
+
 [features]
 no-entrypoint = []
 test-bpf = []
