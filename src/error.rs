@@ -21,6 +21,8 @@ pub enum PoolError {
     DuplicateAccount,
     #[error("Lp token mint has a positive balance")]
     MintHasBalance,
+
+    // 105
     #[error("Pool does not have mint authority of lp token mint")]
     InvalidMintAuthority,
     #[error("Lp token mint's freeze authority is set")]
@@ -31,6 +33,8 @@ pub enum PoolError {
     TokenAccountHasDelegate,
     #[error("Token account's close authority is set")]
     TokenAccountHasCloseAuthority,
+
+    // 110
     #[error("Invalid governance account")]
     InvalidGovernanceAccount,
     #[error("Invalid governance fee account")]
@@ -41,6 +45,8 @@ pub enum PoolError {
     InvalidMintAccount,
     #[error("Not enough time has passed since prepare instruction")]
     InsufficientDelay,
+
+    //115
     #[error("Nothing to enact")]
     InvalidEnact,
     #[error("Pool is paused")]
