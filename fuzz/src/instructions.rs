@@ -102,7 +102,8 @@ impl<const TOKEN_COUNT: usize> PoolInfo<TOKEN_COUNT> {
     pub async fn get_depth(&self, banks_client: &mut BanksClient, amp_factor: DecT) -> DecT {
         let token_account_balances: [AmountT; TOKEN_COUNT] = self.get_token_account_balances(banks_client).await;
         //let pool_state = Self::deserialize_pool_state(banks_client).unwrap();
-        Invariant::calculate_depth(&token_account_balances, amp_factor)
+        //println!("######################################## {:?}", token_account_balances);
+        DecT::from(Invariant::calculate_depth(&token_account_balances, amp_factor))
     }
 
     fn to_key_array(account_slice: &[Keypair; TOKEN_COUNT]) -> [Pubkey; TOKEN_COUNT] {
@@ -304,7 +305,7 @@ impl<const TOKEN_COUNT: usize> PoolInfo<TOKEN_COUNT> {
 #[derive(Debug)]
 pub struct FuzzInstruction<const TOKEN_COUNT: usize> {
     instruction: DeFiInstruction<TOKEN_COUNT>,
-    user_wallet_acct: AccountId,
+    user_acct_id: AccountId,
 }
 
 // #[cfg(feature = "fuzz")]
@@ -349,7 +350,7 @@ impl<'a, const TOKEN_COUNT: usize> Arbitrary<'a> for FuzzInstruction<TOKEN_COUNT
         };
         Ok(FuzzInstruction {
             instruction: ix,
-            user_wallet_acct: u.arbitrary()?,
+            user_acct_id: u.arbitrary()?,
         })
     }
 }
@@ -480,9 +481,11 @@ async fn run_fuzz_instructions<const TOKEN_COUNT: usize>(
     println!("[DEV] pool_token_account_balances: {:?}", pool_token_account_balances);
 
     // Map<accountId, wallet_key>
-    let mut user_wallets: HashMap<AccountId, Pubkey> = HashMap::new();
+    let mut user_wallets: HashMap<AccountId, Keypair> = HashMap::new();
+    let mut user_transfer_authorities: HashMap<AccountId, Keypair> = HashMap::new();
     //Map<user_wallet_key>, associated_token_account_pubkey
     let mut user_token_accounts: HashMap<usize, HashMap<AccountId, Pubkey>> = HashMap::new();
+    let mut user_lp_token_accounts: HashMap<AccountId, Pubkey> = HashMap::new();
     for token_idx in 0..TOKEN_COUNT {
         user_token_accounts.insert(token_idx, HashMap::new());
     }
@@ -490,20 +493,21 @@ async fn run_fuzz_instructions<const TOKEN_COUNT: usize>(
 
     //add all the pool & token accounts that will be needed
     for fuzz_ix in &fuzz_instructions {
-        let user_wallet_id = fuzz_ix.user_wallet_acct;
-        user_wallets
-            .entry(user_wallet_id)
-            .or_insert_with(|| Pubkey::new_unique());
-        let user_wallet_key = user_wallets.get(&user_wallet_id).unwrap();
+        let user_id = fuzz_ix.user_acct_id;
+        user_wallets.entry(user_id).or_insert_with(|| Keypair::new());
+        user_transfer_authorities
+            .entry(user_id)
+            .or_insert_with(|| Keypair::new());
+        let user_wallet_keypair = user_wallets.get(&user_id).unwrap();
         for token_idx in 0..TOKEN_COUNT {
             let token_mint_keypair = &pool.token_mint_keypairs[token_idx];
-            if !user_token_accounts[&token_idx].contains_key(&user_wallet_id) {
+            if !user_token_accounts[&token_idx].contains_key(&user_id) {
                 let user_ata_pubkey = create_assoc_token_acct_and_mint(
                     banks_client,
                     &correct_payer,
                     recent_blockhash,
                     &user_accounts_owner,
-                    user_wallet_key,
+                    &user_wallet_keypair.pubkey(),
                     &token_mint_keypair.pubkey(),
                     INITIAL_USER_TOKEN_AMOUNT,
                 )
@@ -512,9 +516,23 @@ async fn run_fuzz_instructions<const TOKEN_COUNT: usize>(
                 user_token_accounts
                     .get_mut(&token_idx)
                     .unwrap()
-                    .insert(user_wallet_id, user_ata_pubkey);
+                    .insert(user_id, user_ata_pubkey);
             }
         }
+
+        // create user ATA for LP Token
+        let user_lp_ata_pubkey = create_assoc_token_acct_and_mint(
+            banks_client,
+            &correct_payer,
+            recent_blockhash,
+            &Keypair::new(), // this is dummy value not used since we don't mint any LP tokens here
+            &user_wallet_keypair.pubkey(),
+            &pool.lp_mint_keypair.pubkey(),
+            0,
+        )
+        .await
+        .unwrap();
+        user_lp_token_accounts.insert(user_id, user_lp_ata_pubkey);
     }
     let mut before_total_token_amounts = vec![];
     for token_idx in 0..TOKEN_COUNT {
@@ -525,11 +543,17 @@ async fn run_fuzz_instructions<const TOKEN_COUNT: usize>(
     println!("[DEV] before_total_token_amounts: {:?}", before_total_token_amounts);
 
     let mut global_output_ixs = vec![];
-    let mut global_singer_keys = vec![];
+    let mut global_signer_keys = vec![];
 
     for fuzz_ix in fuzz_instructions {
-        let (mut output_ix, mut signer_keys) =
-            run_fuzz_instruction(fuzz_ix, &pool, &user_wallets, &user_token_accounts);
+        let (mut output_ix, mut signer_keys) = run_fuzz_instruction(
+            fuzz_ix,
+            &pool,
+            &user_wallets,
+            &user_transfer_authorities,
+            &user_token_accounts,
+            &user_lp_token_accounts,
+        );
         global_output_ixs.append(&mut output_ix);
         global_signer_keys.append(&mut signer_keys);
     }
@@ -593,13 +617,18 @@ async fn run_fuzz_instructions<const TOKEN_COUNT: usize>(
 }
 
 fn run_fuzz_instruction<const TOKEN_COUNT: usize>(
-    fuzz_instruction: FuzzInstruction,
-    pool: &PoolInfo,
-    user_wallets: &HashMap<AccountId, Pubkey>,
-    user_token_accounts: &HashMap<usize, HashMap<AccountId, Pubkey>>,
+    fuzz_instruction: FuzzInstruction<TOKEN_COUNT>,
+    pool: &PoolInfo<TOKEN_COUNT>,
+    user_wallets: &HashMap<AccountId, Keypair>,
+    all_user_transfer_authorities: &HashMap<AccountId, Keypair>,
+    all_user_token_accounts: &HashMap<usize, HashMap<AccountId, Pubkey>>,
+    all_user_lp_token_accounts: &HashMap<AccountId, Pubkey>,
 ) -> (Vec<Instruction>, Vec<Keypair>) {
-    let user_wallet_acct_id = fuzz_instruction.user_wallet_acct;
-
+    let user_acct_id = fuzz_instruction.user_acct_id;
+    let user_acct_owner = user_wallets.get(&user_acct_id).unwrap();
+    let user_transfer_authority = all_user_transfer_authorities.get(&user_acct_id).unwrap();
+    let user_token_accts = get_user_token_accounts(user_acct_id, all_user_token_accounts);
+    let user_lp_token_acct = all_user_lp_token_accounts.get(&user_acct_id).unwrap();
     //Notes:
     //  - bonfida vesting
     //      run_fuzz_ixs
@@ -607,38 +636,102 @@ fn run_fuzz_instruction<const TOKEN_COUNT: usize>(
     //          global_output_ixs: Vec<Instruction> & global_singer_keys: Vec<Keypairs>
     //          after it runs all the ixs in one transaction
     //  - SPL token-swap
-    let result = match fuzz_instruction.instruction {
-        DeFiInstruction::<TOKEN_COUNT>::Add {
+    match fuzz_instruction.instruction {
+        DeFiInstruction::Add {
             input_amounts,
             minimum_mint_amount,
-        } => {}
-        DeFiInstruction::<TOKEN_COUNT>::SwapExactInput {
+        } => {
+            let mut ix_vec = vec![];
+            let kp_vec = vec![clone_keypair(user_transfer_authority)];
+            for token_idx in 0..TOKEN_COUNT {
+                let approve_ix = approve(
+                    &spl_token::id(),
+                    &user_token_accts[token_idx],
+                    &user_transfer_authority.pubkey(),
+                    &user_acct_owner.pubkey(),
+                    &[&user_acct_owner.pubkey()],
+                    input_amounts[token_idx],
+                )
+                .unwrap();
+                ix_vec.push(approve_ix);
+            }
+            let add_ix = create_add_ix(
+                &pool::id(),
+                &pool.pool_keypair.pubkey(),
+                &pool.authority,
+                pool.get_token_account_pubkeys(),
+                &pool.lp_mint_keypair.pubkey(),
+                &pool.governance_fee_keypair.pubkey(),
+                &user_transfer_authority.pubkey(),
+                user_token_accts,
+                &spl_token::id(),
+                user_lp_token_acct,
+                input_amounts,
+                minimum_mint_amount,
+            )
+            .unwrap();
+            ix_vec.push(add_ix);
+            (ix_vec, kp_vec)
+        }
+        DeFiInstruction::SwapExactInput {
             exact_input_amounts,
             output_token_index,
             minimum_output_amount,
-        } => {}
-        DeFiInstruction::<TOKEN_COUNT>::SwapExactOutput {
+        } => {
+            let ix_vec = vec![];
+            let kp_vec = vec![];
+            (ix_vec, kp_vec)
+        }
+        DeFiInstruction::SwapExactOutput {
             maximum_input_amount,
             input_token_index,
             exact_output_amounts,
-        } => {}
-        DeFiInstruction::<TOKEN_COUNT>::RemoveUniform {
+        } => {
+            let ix_vec = vec![];
+            let kp_vec = vec![];
+            (ix_vec, kp_vec)
+        }
+        DeFiInstruction::RemoveUniform {
             exact_burn_amount,
             minimum_output_amounts,
-        } => {}
-        DeFiInstruction::<TOKEN_COUNT>::RemoveExactBurn {
+        } => {
+            let ix_vec = vec![];
+            let kp_vec = vec![];
+            (ix_vec, kp_vec)
+        }
+        DeFiInstruction::RemoveExactBurn {
             exact_burn_amount,
             output_token_index,
             minimum_output_amount,
-        } => {}
-        DefiInstruction::<TOKEN_COUNT>::RemoveExactOutput {
+        } => {
+            let ix_vec = vec![];
+            let kp_vec = vec![];
+            (ix_vec, kp_vec)
+        }
+        DeFiInstruction::RemoveExactOutput {
             maximum_burn_amount,
             exact_output_amounts,
-        } => {}
-    };
+        } => {
+            let ix_vec = vec![];
+            let kp_vec = vec![];
+            (ix_vec, kp_vec)
+        }
+    }
 }
 
 /** Helper fns  **/
+pub fn get_user_token_accounts<const TOKEN_COUNT: usize>(
+    user_acct_id: AccountId,
+    user_token_accounts: &HashMap<usize, HashMap<AccountId, Pubkey>>,
+) -> [Pubkey; TOKEN_COUNT] {
+    let mut user_token_accts_arrvec = ArrayVec::<_, TOKEN_COUNT>::new();
+    for token_idx in 0..TOKEN_COUNT {
+        let user_token_account = user_token_accounts.get(&token_idx).unwrap().get(&user_acct_id).unwrap();
+        user_token_accts_arrvec.push(*user_token_account);
+    }
+    user_token_accts_arrvec.into_inner().unwrap()
+}
+
 /// Creates an associated token account and mints
 /// `amount` for a user
 pub async fn create_assoc_token_acct_and_mint(
@@ -657,18 +750,19 @@ pub async fn create_assoc_token_acct_and_mint(
     let result = banks_client.process_transaction(transaction).await;
 
     let user_token_pubkey = get_associated_token_address(user_wallet_pubkey, token_mint);
-    mint_tokens_to(
-        banks_client,
-        &correct_payer,
-        &recent_blockhash,
-        token_mint,
-        &user_token_pubkey,
-        mint_authority,
-        amount,
-    )
-    .await
-    .unwrap();
-
+    if amount > 0 {
+        mint_tokens_to(
+            banks_client,
+            &correct_payer,
+            &recent_blockhash,
+            token_mint,
+            &user_token_pubkey,
+            mint_authority,
+            amount,
+        )
+        .await
+        .unwrap();
+    }
     Ok(user_token_pubkey)
 }
 /// Creates and initializes a token account
@@ -808,4 +902,8 @@ pub async fn print_user_token_account_owners<const TOKEN_COUNT: usize>(
             &token_accounts[i], token_account.owner, spl_token_account_info.owner
         );
     }
+}
+
+fn clone_keypair(keypair: &Keypair) -> Keypair {
+    return Keypair::from_bytes(&keypair.to_bytes().clone()).unwrap();
 }
