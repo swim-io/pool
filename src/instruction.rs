@@ -75,6 +75,7 @@ pub fn create_init_ix<const TOKEN_COUNT: usize>(
         data,
     })
 }
+
 #[cfg_attr(feature = "fuzz", derive(Arbitrary))]
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
