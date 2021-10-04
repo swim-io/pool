@@ -300,7 +300,8 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                         )?;
                     }
                 }
-
+                use solana_program::msg;
+                msg!("[DEV] lp_mint_amount: {}", mint_amount);
                 Self::mint_token(
                     lp_mint_account,
                     user_lp_token_account,

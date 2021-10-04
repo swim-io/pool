@@ -834,3 +834,187 @@ async fn test_pool_swap_exact_input_lp_share() {
         lp_supply_after, depth_after, share_after
     );
 }
+
+#[tokio::test]
+async fn test_pool_add2() {
+    let mut test = ProgramTest::new(
+        "pool",
+        pool::id(),
+        processor!(pool::processor::Processor::<{ TOKEN_COUNT }>::process),
+    );
+
+    // limit to track compute unit increase.
+    // Mainnet compute budget as of 08/25/2021 is 200_000
+    test.set_bpf_compute_max_units(200_000);
+
+    //TODO: not sure if needed
+    let user_accounts_owner = Keypair::new();
+
+    let (mut banks_client, payer, _recent_blockhash) = test.start().await;
+
+    let amp_factor = DecimalU64::new(1000, 0).unwrap();
+    let lp_fee = DecimalU64::new(99, 2).unwrap(); //3
+    let governance_fee = DecimalU64::from(0);
+    let pool = TestPoolAccountInfo::<{ TOKEN_COUNT }>::new();
+    pool.init_pool(
+        &mut banks_client,
+        &payer,
+        &user_accounts_owner,
+        amp_factor,
+        lp_fee,
+        governance_fee,
+    )
+    .await;
+    // u64 1 == 1/1_000_000 of a dollar = 0.000001
+    //0.000500; 0.007560; 0.001500; 0.000002000
+    let deposit_tokens_to_mint: [AmountT; TOKEN_COUNT] = [
+        // 0.000_001
+        //DecimalU64::new(5, 4).unwrap().get_raw(),     // 0.000_500
+        50000, //5 x 10^1 / 10^6 =
+        //DecimalU64::new(756, 5).unwrap().get_raw(),   // 0.007_560
+        75600, // 7.56 * 10^2
+        //DecimalU64::new(15, 4).unwrap().get_raw(),    // 0.001_500
+        150000, //1.5 * 10^2
+        //DecimalU64::new(2, 3).unwrap().get_raw()      // 0.002_000
+        200000, // 2 * 10 ^ 2  / 10^6
+    ];
+
+    let deposit_tokens_for_approval: [AmountT; TOKEN_COUNT] = [
+        // 0.000_001
+        //DecimalU64::new(5, 4).unwrap().get_raw(),     // 0.000_500
+        50, //5 x 10^1 / 10^6 =
+        //DecimalU64::new(756, 5).unwrap().get_raw(),   // 0.007_560
+        756, // 7.56 * 10^2
+        //DecimalU64::new(15, 4).unwrap().get_raw(),    // 0.001_500
+        150, //1.5 * 10^2
+        //DecimalU64::new(2, 3).unwrap().get_raw()      // 0.002_000
+        200, // 2 * 10 ^ 2  / 10^6
+    ];
+
+    // println!("[DEV] deposit_tokens_to_mint: {:?}", deposit_tokens_to_mint);
+
+    // let mut deposit_tokens_to_mint_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
+    // let mut deposit_tokens_for_approval_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
+    // let mut inc: u64 = 1;
+    // for i in 0..TOKEN_COUNT {
+    //     let approval_amount: u64 = inc * 100;
+    //     let mint_amount: u64 = approval_amount * 2;
+    //     deposit_tokens_to_mint_arrayvec.push(mint_amount);
+    //     deposit_tokens_for_approval_arrayvec.push(approval_amount);
+    //     inc += 1;
+    // }
+    // let deposit_tokens_to_mint: [AmountT; TOKEN_COUNT] = deposit_tokens_to_mint_arrayvec.into_inner().unwrap();
+    // let deposit_tokens_for_approval: [AmountT; TOKEN_COUNT] =
+    //     deposit_tokens_for_approval_arrayvec.into_inner().unwrap();
+    let user_transfer_authority = Keypair::new();
+    let (user_token_accounts, user_lp_token_account) = pool
+        .prepare_accounts_for_add(
+            &mut banks_client,
+            &payer,
+            &user_accounts_owner,
+            &user_transfer_authority.pubkey(),
+            deposit_tokens_to_mint,
+            deposit_tokens_for_approval,
+        )
+        .await;
+    //let user_token_accounts_debug = ArrayVec::<_, TOKEN_COUNT>::new();
+    for i in 0..TOKEN_COUNT {
+        let user_token_acct_acct = get_account(&mut banks_client, &user_token_accounts[i].pubkey()).await;
+        let user_token_acct = Token::unpack(&user_token_acct_acct.data).unwrap();
+        println!(
+            "user_token_accounts[{}].amount is {}. delegated_amount: {}",
+            i, user_token_acct.amount, user_token_acct.delegated_amount
+        );
+    }
+
+    let mut user_token_keypairs_arrvec = ArrayVec::<_, TOKEN_COUNT>::new();
+    for i in 0..TOKEN_COUNT {
+        user_token_keypairs_arrvec.push(user_token_accounts[i].pubkey());
+    }
+    let user_token_pubkeys = user_token_keypairs_arrvec.into_inner().unwrap();
+    let user_token_balances_before = get_token_balances(&mut banks_client, user_token_pubkeys).await;
+    let user_lp_token_balances_before =
+        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    assert_eq!(deposit_tokens_to_mint, user_token_balances_before);
+    assert_eq!(0, user_lp_token_balances_before[0]);
+    println!("[DEV] Executing add");
+    pool.execute_add(
+        &mut banks_client,
+        &payer,
+        &user_accounts_owner,
+        &user_transfer_authority,
+        &user_token_accounts,
+        &spl_token::id(),
+        &user_lp_token_account.pubkey(),
+        deposit_tokens_for_approval,
+        0,
+    )
+    .await;
+
+    let user_token_balances_after = get_token_balances(&mut banks_client, user_token_pubkeys).await;
+    let mut expected_user_token_balances_arrvec = ArrayVec::<_, TOKEN_COUNT>::new();
+    for i in 0..TOKEN_COUNT {
+        expected_user_token_balances_arrvec.push(deposit_tokens_to_mint[i] - deposit_tokens_for_approval[i]);
+    }
+    let expected_user_token_balances = expected_user_token_balances_arrvec.into_inner().unwrap();
+    println!("expected_user_token_balances: {:?}", expected_user_token_balances);
+    println!("user_token_balances_after: {:?}", user_token_balances_after);
+    assert_eq!(expected_user_token_balances, user_token_balances_after);
+    let user_lp_token_balance_after =
+        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    println!("user_lp_token_balance_after: {:?}", user_lp_token_balance_after);
+    let governance_fee_balance =
+        get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
+    println!("governance_fee_balance: {:?}", governance_fee_balance);
+    let pool_token_balances = pool.get_token_account_balances(&mut banks_client).await;
+    println!("pool_token_balances: {:?}", pool_token_balances);
+
+    println!("Repeating add");
+
+    let deposit_tokens_for_approval: [AmountT; TOKEN_COUNT] = [
+        // 0.000_001
+        //DecimalU64::new(5, 4).unwrap().get_raw(),     // 0.000_500
+        //50, //5 x 10^1 / 10^6 =
+        0,   //DecimalU64::new(756, 5).unwrap().get_raw(),   // 0.007_560
+        756, // 7.56 * 10^2
+        //DecimalU64::new(15, 4).unwrap().get_raw(),    // 0.001_500
+        150, //1.5 * 10^2
+        //DecimalU64::new(2, 3).unwrap().get_raw()      // 0.002_000
+        200, // 2 * 10 ^ 2  / 10^6
+    ];
+
+    println!("Prep add 2");
+    let (user_token_accounts2, user_lp_token_account2) = pool
+        .prepare_accounts_for_add(
+            &mut banks_client,
+            &payer,
+            &user_accounts_owner,
+            &user_transfer_authority.pubkey(),
+            deposit_tokens_to_mint,
+            deposit_tokens_for_approval,
+        )
+        .await;
+
+    println!("Execute Add 2");
+    pool.execute_add(
+        &mut banks_client,
+        &payer,
+        &user_accounts_owner,
+        &user_transfer_authority,
+        &user_token_accounts2,
+        &spl_token::id(),
+        &user_lp_token_account2.pubkey(),
+        deposit_tokens_for_approval,
+        0,
+    )
+    .await;
+
+    let user_lp_token_balance_after =
+        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account2.pubkey()]).await;
+    println!("user_lp_token_balance_after_2: {:?}", user_lp_token_balance_after);
+    let governance_fee_balance =
+        get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
+    println!("governance_fee_balance: {:?}", governance_fee_balance);
+    let pool_token_balances = pool.get_token_account_balances(&mut banks_client).await;
+    println!("pool_token_balances_2: {:?}", pool_token_balances);
+}
