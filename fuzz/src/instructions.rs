@@ -584,6 +584,7 @@ async fn run_fuzz_instructions<const TOKEN_COUNT: usize>(
                         | InstructionError::InvalidSeeds
                         | InstructionError::Custom(2) // TokenError::InsufficientFunds
                         | InstructionError::Custom(118) //PoolError::OutsideSpecifiedLimits
+                        | InstructionError::Custom(120) //PoolError::ImpossibleRemove
                             => {}
                         _ => {
                             print!("{:?}", ie);
@@ -678,8 +679,42 @@ fn run_fuzz_instruction<const TOKEN_COUNT: usize>(
             output_token_index,
             minimum_output_amount,
         } => {
-            let ix_vec = vec![];
-            let kp_vec = vec![];
+            let mut ix_vec = vec![];
+            let kp_vec = vec![clone_keypair(user_transfer_authority)];
+            for token_idx in 0..TOKEN_COUNT {
+                let input_amount = exact_input_amounts[token_idx];
+                if input_amount > 0 {
+                    //TODO: need to handle if input_amount > user_token_acct.supply
+                    let approve_ix = approve(
+                        &spl_token::id(),
+                        &user_token_accts[token_idx],
+                        &user_transfer_authority.pubkey(),
+                        &user_acct_owner.pubkey(),
+                        &[&user_acct_owner.pubkey()],
+                        input_amount,
+                    )
+                    .unwrap();
+                    ix_vec.push(approve_ix);
+                }
+            }
+            let swap_exact_input_ix = create_swap_exact_input_ix(
+                &pool::id(),
+                &pool.pool_keypair.pubkey(),
+                &pool.authority,
+                pool.get_token_account_pubkeys(),
+                &pool.lp_mint_keypair.pubkey(),
+                &pool.governance_fee_keypair.pubkey(),
+                &user_transfer_authority.pubkey(),
+                user_token_accts,
+                &spl_token::id(),
+                exact_input_amounts,
+                output_token_index,
+                minimum_output_amount,
+            )
+            .unwrap();
+
+            ix_vec.push(swap_exact_input_ix);
+
             (ix_vec, kp_vec)
         }
         DeFiInstruction::SwapExactOutput {
@@ -687,8 +722,37 @@ fn run_fuzz_instruction<const TOKEN_COUNT: usize>(
             input_token_index,
             exact_output_amounts,
         } => {
-            let ix_vec = vec![];
-            let kp_vec = vec![];
+            let mut ix_vec = vec![];
+            let kp_vec = vec![clone_keypair(user_transfer_authority)];
+            let approve_ix = approve(
+                &spl_token::id(),
+                &user_token_accts[input_token_index as usize],
+                &user_transfer_authority.pubkey(),
+                &user_acct_owner.pubkey(),
+                &[&user_acct_owner.pubkey()],
+                maximum_input_amount,
+            )
+            .unwrap();
+            ix_vec.push(approve_ix);
+
+            let swap_exact_output_ix = create_swap_exact_output_ix(
+                &pool::id(),
+                &pool.pool_keypair.pubkey(),
+                &pool.authority,
+                pool.get_token_account_pubkeys(),
+                &pool.lp_mint_keypair.pubkey(),
+                &pool.governance_fee_keypair.pubkey(),
+                &user_transfer_authority.pubkey(),
+                user_token_accts,
+                &spl_token::id(),
+                maximum_input_amount,
+                input_token_index,
+                exact_output_amounts,
+            )
+            .unwrap();
+
+            ix_vec.push(swap_exact_output_ix);
+
             (ix_vec, kp_vec)
         }
         DeFiInstruction::RemoveUniform {

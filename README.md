@@ -60,6 +60,8 @@ $ docker build -t pool .
 $ docker run -it -v $(pwd):/app/ pool bash
 # should be in the docker container now
 $ cd fuzz
+$ BPF_OUT_DIR="/app/target/deploy" HFUZZ_RUN_ARGS="-t 10 -n 1 -N 100 -Q  " cargo hfuzz run pool_fuzz 
+# redirect output to files
 $ BPF_OUT_DIR="/app/target/deploy" HFUZZ_RUN_ARGS="-t 10 -n 1 -N 100 -Q -d -v -l ./fuzz.log -R ./fuzz_report.log " cargo hfuzz run pool_fuzz > test_output.txt 2>&1
 # -t = timeout in seconds
 # -n = number of threads
