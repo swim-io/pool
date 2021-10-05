@@ -324,7 +324,6 @@ async fn test_pool_swap_exact_input() {
     )
     .await;
 
-    println!("[DEV] ########################### BEFORE EXECUTE SWAP EXACT INPUT");
     let output_token_index: u8 = (TOKEN_COUNT - 1) as u8;
     pool.execute_swap_exact_input(
         &mut banks_client,
@@ -338,8 +337,6 @@ async fn test_pool_swap_exact_input() {
         0,
     )
     .await;
-
-    println!("[DEV] ########################### AFTER EXECUTE SWAP EXACT INPUT");
 
     let user_token_balances_after_swap = get_token_balances(&mut banks_client, user_token_pubkeys).await;
     println!("user_token_balances_after_swap: {:?}", user_token_balances_after_swap);
