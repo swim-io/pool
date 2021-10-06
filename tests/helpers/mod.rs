@@ -152,7 +152,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         ];
         // create token mints and Token accounts
         for i in 0..TOKEN_COUNT {
-            println!("adding create_account & initialize_mint ix for {}", i);
+            // println!("adding create_account & initialize_mint ix for {}", i);
             ixs_vec.push(create_account(
                 &payer.pubkey(),
                 &token_mint_pubkeys[i],
@@ -173,7 +173,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
             );
         }
         for i in 0..TOKEN_COUNT {
-            println!("adding create_account & initialize_account ix for {}", i);
+            // println!("adding create_account & initialize_account ix for {}", i);
             ixs_vec.push(create_account(
                 &payer.pubkey(),
                 &token_account_pubkeys[i],
