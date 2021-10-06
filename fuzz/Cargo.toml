@@ -15,7 +15,7 @@ pool = {path = "..", features = ["fuzz", "no-entrypoint"]}
 #solana related dependencies
 solana-program = "1.7.10"
 spl-token = { version = "3.1.1", features = ["no-entrypoint"] }
-solana-program-test = "1.7.4"
+solana-program-test = "1.7.14"
 solana-sdk = "1.7.4"
 spl-associated-token-account = { version = "1.0.2", features = ["no-entrypoint"] }
 
