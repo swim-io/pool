@@ -265,6 +265,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         payer: &Keypair,
         user_accounts_owner: &Keypair,
         user_transfer_authority: &Pubkey,
+        mint_authority: &Keypair,
         deposit_tokens_to_mint: [AmountT; TOKEN_COUNT],
         deposit_tokens_for_approval: [AmountT; TOKEN_COUNT],
     ) -> ([Keypair; TOKEN_COUNT], Keypair) {
@@ -294,7 +295,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
                 &recent_blockhash,
                 &token_mint,
                 &user_token_keypair.pubkey(),
-                user_accounts_owner,
+                mint_authority,
                 deposit_tokens_to_mint[i],
             )
             .await
@@ -563,7 +564,7 @@ pub async fn mint_tokens_to(
     recent_blockhash: &Hash,
     mint: &Pubkey,
     destination: &Pubkey,
-    authority: &Keypair,
+    mint_authority: &Keypair,
     amount: u64,
 ) -> Result<(), TransportError> {
     let mut transaction = Transaction::new_with_payer(
@@ -571,14 +572,14 @@ pub async fn mint_tokens_to(
             &spl_token::id(),
             mint,
             destination,
-            &authority.pubkey(),
-            &[&authority.pubkey()],
+            &mint_authority.pubkey(),
+            &[&mint_authority.pubkey()],
             amount,
         )
         .unwrap()],
         Some(&payer.pubkey()),
     );
-    transaction.sign(&[payer, authority], *recent_blockhash);
+    transaction.sign(&[payer, mint_authority], *recent_blockhash);
     banks_client.process_transaction(transaction).await?;
     Ok(())
 }

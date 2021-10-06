@@ -130,6 +130,7 @@ async fn test_pool_add() {
             &payer,
             &user_accounts_owner,
             &user_transfer_authority.pubkey(),
+            &user_accounts_owner,
             deposit_tokens_to_mint,
             deposit_tokens_for_approval,
         )
@@ -238,6 +239,7 @@ async fn test_pool_swap_exact_input() {
             &payer,
             &user_accounts_owner,
             &user_transfer_authority.pubkey(),
+            &user_accounts_owner,
             deposit_tokens_to_mint,
             deposit_tokens_for_approval,
         )
@@ -403,6 +405,7 @@ async fn test_pool_remove_uniform() {
             &payer,
             &user_accounts_owner,
             &user_transfer_authority.pubkey(),
+            &user_accounts_owner,
             deposit_tokens_to_mint,
             deposit_tokens_for_approval,
         )
@@ -539,6 +542,7 @@ async fn test_pool_remove_exact_burn() {
             &payer,
             &user_accounts_owner,
             &user_transfer_authority.pubkey(),
+            &user_accounts_owner,
             deposit_tokens_to_mint,
             deposit_tokens_for_approval,
         )
@@ -684,6 +688,7 @@ async fn test_pool_swap_exact_input_lp_share() {
             &payer,
             &user_accounts_owner,
             &user_transfer_authority.pubkey(),
+            &user_accounts_owner,
             deposit_tokens_to_mint,
             deposit_tokens_for_approval,
         )
@@ -864,17 +869,19 @@ async fn test_pool_add2() {
     .await;
     // u64 1 == 1/1_000_000 of a dollar = 0.000001
     //0.000500; 0.007560; 0.001500; 0.000002000
-    let deposit_tokens_to_mint: [AmountT; TOKEN_COUNT] = [
-        // 0.000_001
-        //DecimalU64::new(5, 4).unwrap().get_raw(),     // 0.000_500
-        50000, //5 x 10^1 / 10^6 =
-        //DecimalU64::new(756, 5).unwrap().get_raw(),   // 0.007_560
-        75600, // 7.56 * 10^2
-        //DecimalU64::new(15, 4).unwrap().get_raw(),    // 0.001_500
-        150000, //1.5 * 10^2
-        //DecimalU64::new(2, 3).unwrap().get_raw()      // 0.002_000
-        200000, // 2 * 10 ^ 2  / 10^6
-    ];
+    // let deposit_tokens_to_mint: [AmountT; TOKEN_COUNT] = [
+    //     // 0.000_001
+    //     //DecimalU64::new(5, 4).unwrap().get_raw(),     // 0.000_500
+    //     50000, //5 x 10^1 / 10^6 =
+    //     //DecimalU64::new(756, 5).unwrap().get_raw(),   // 0.007_560
+    //     75600, // 7.56 * 10^2
+    //     //DecimalU64::new(15, 4).unwrap().get_raw(),    // 0.001_500
+    //     150000, //1.5 * 10^2
+    //     //DecimalU64::new(2, 3).unwrap().get_raw()      // 0.002_000
+    //     200000, // 2 * 10 ^ 2  / 10^6
+    // ];
+
+    let deposit_tokens_to_mint: [AmountT; TOKEN_COUNT] = [(u64::MAX - 10) / 2; TOKEN_COUNT];
 
     let deposit_tokens_for_approval: [AmountT; TOKEN_COUNT] = [
         // 0.000_001
@@ -910,6 +917,7 @@ async fn test_pool_add2() {
             &payer,
             &user_accounts_owner,
             &user_transfer_authority.pubkey(),
+            &user_accounts_owner, //user_accounts_owner is mint authority. will clean up this ugly setup later.
             deposit_tokens_to_mint,
             deposit_tokens_for_approval,
         )
@@ -968,25 +976,18 @@ async fn test_pool_add2() {
 
     println!("Repeating add");
 
-    let deposit_tokens_for_approval: [AmountT; TOKEN_COUNT] = [
-        // 0.000_001
-        //DecimalU64::new(5, 4).unwrap().get_raw(),     // 0.000_500
-        //50, //5 x 10^1 / 10^6 =
-        0,   //DecimalU64::new(756, 5).unwrap().get_raw(),   // 0.007_560
-        756, // 7.56 * 10^2
-        //DecimalU64::new(15, 4).unwrap().get_raw(),    // 0.001_500
-        150, //1.5 * 10^2
-        //DecimalU64::new(2, 3).unwrap().get_raw()      // 0.002_000
-        200, // 2 * 10 ^ 2  / 10^6
-    ];
+    let deposit_tokens_for_approval: [AmountT; TOKEN_COUNT] = [5495938558252285952, 7208774, 0, 0];
 
     println!("Prep add 2");
+    let mint_authority = user_accounts_owner;
+    let user_accounts_owner2 = Keypair::new();
     let (user_token_accounts2, user_lp_token_account2) = pool
         .prepare_accounts_for_add(
             &mut banks_client,
             &payer,
-            &user_accounts_owner,
+            &user_accounts_owner2,
             &user_transfer_authority.pubkey(),
+            &mint_authority,
             deposit_tokens_to_mint,
             deposit_tokens_for_approval,
         )
@@ -996,7 +997,7 @@ async fn test_pool_add2() {
     pool.execute_add(
         &mut banks_client,
         &payer,
-        &user_accounts_owner,
+        &user_accounts_owner2,
         &user_transfer_authority,
         &user_token_accounts2,
         &spl_token::id(),
