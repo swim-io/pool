@@ -290,8 +290,16 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         // println!("swap_base_balances: {:?}", swap_base_balances);
         let known_balances = exclude_index(index, swap_base_balances);
         // println!("known_balances: {:?}", known_balances);
-        let unknown_balance =
-            Self::calculate_unknown_balance(&known_balances, initial_depth, amp_factor, AmountT::zero())?;
+        let unknown_balance = Self::calculate_unknown_balance(
+            &known_balances,
+            initial_depth,
+            amp_factor,
+            if is_exact_input {
+                pool_balances[index]
+            } else {
+                AmountT::zero()
+            },
+        )?;
         // println!("unknown_balance: {}", unknown_balance);
         let intermediate_amount = sub_given_order(is_exact_input, pool_balances[index], unknown_balance);
         // println!("intermediate_amount: {}", intermediate_amount);
