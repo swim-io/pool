@@ -617,7 +617,7 @@ async fn run_fuzz_instructions<const TOKEN_COUNT: usize>(
     fuzz_data: &FuzzData<TOKEN_COUNT>,
 ) {
     /** Prep/Initialize pool. TODO: Refactor this into separate method */
-    let amp_factor = DecimalU64::from(1);
+    let amp_factor = DecimalU64::from(100);
     let lp_fee = DecimalU64::from(0);
     let governance_fee = DecimalU64::new(1000, 5).unwrap();
     let user_accounts_owner = Keypair::new();
@@ -711,7 +711,6 @@ async fn run_fuzz_instructions<const TOKEN_COUNT: usize>(
 
     // Map<accountId, wallet_key>
     let mut user_wallets: HashMap<AccountId, Keypair> = HashMap::new();
-    let mut user_transfer_authorities: HashMap<AccountId, Keypair> = HashMap::new();
     //Map<user_wallet_key>, associated_token_account_pubkey
     let mut user_token_accounts: HashMap<usize, HashMap<AccountId, Pubkey>> = HashMap::new();
     let mut user_lp_token_accounts: HashMap<AccountId, Pubkey> = HashMap::new();
@@ -725,9 +724,6 @@ async fn run_fuzz_instructions<const TOKEN_COUNT: usize>(
     for fuzz_ix in fuzz_instructions {
         let user_id = fuzz_ix.user_acct_id;
         user_wallets.entry(user_id).or_insert_with(|| Keypair::new());
-        user_transfer_authorities
-            .entry(user_id)
-            .or_insert_with(|| Keypair::new());
         let user_wallet_keypair = user_wallets.get(&user_id).unwrap();
         for token_idx in 0..TOKEN_COUNT {
             let token_mint_keypair = &pool.token_mint_keypairs[token_idx];
@@ -804,7 +800,6 @@ async fn run_fuzz_instructions<const TOKEN_COUNT: usize>(
             &fuzz_ix,
             &pool,
             &user_wallets,
-            &user_transfer_authorities,
             &user_token_accounts,
             &user_lp_token_accounts,
         )
@@ -928,7 +923,6 @@ async fn run_fuzz_instruction<const TOKEN_COUNT: usize>(
     fuzz_instruction: &FuzzInstruction<TOKEN_COUNT>,
     pool: &PoolInfo<TOKEN_COUNT>,
     user_wallets: &HashMap<AccountId, Keypair>,
-    all_user_transfer_authorities: &HashMap<AccountId, Keypair>,
     all_user_token_accounts: &HashMap<usize, HashMap<AccountId, Pubkey>>,
     all_user_lp_token_accounts: &HashMap<AccountId, Pubkey>,
 ) {
@@ -936,7 +930,9 @@ async fn run_fuzz_instruction<const TOKEN_COUNT: usize>(
     let mut global_signer_keys = vec![];
     let user_acct_id = fuzz_instruction.user_acct_id;
     let user_acct_owner = user_wallets.get(&user_acct_id).unwrap();
-    let user_transfer_authority = all_user_transfer_authorities.get(&user_acct_id).unwrap();
+    //let user_transfer_authority = all_user_transfer_authorities.get(&user_acct_id).unwrap();
+    let user_transfer_authority = Keypair::new();
+
     let user_token_accts = get_user_token_accounts(user_acct_id, all_user_token_accounts);
     let user_lp_token_acct = all_user_lp_token_accounts.get(&user_acct_id).unwrap();
     //Notes:
@@ -952,7 +948,8 @@ async fn run_fuzz_instruction<const TOKEN_COUNT: usize>(
             minimum_mint_amount,
         } => {
             let mut ix_vec = vec![];
-            let mut kp_vec = vec![clone_keypair(user_transfer_authority)];
+            //let mut kp_vec = vec![];
+            let mut kp_vec = vec![clone_keypair(&user_transfer_authority)];
             for token_idx in 0..TOKEN_COUNT {
                 approve_delegate(
                     banks_client,
@@ -977,6 +974,7 @@ async fn run_fuzz_instruction<const TOKEN_COUNT: usize>(
                 // kp_vec.push(clone_keypair(user_acct_owner));
                 // ix_vec.push(approve_ix);
             }
+            println!("[DEV] Finished approving delegates for add ix");
             let add_ix = create_add_ix(
                 &pool::id(),
                 &pool.pool_keypair.pubkey(),
@@ -984,8 +982,8 @@ async fn run_fuzz_instruction<const TOKEN_COUNT: usize>(
                 pool.get_token_account_pubkeys(),
                 &pool.lp_mint_keypair.pubkey(),
                 &pool.governance_fee_keypair.pubkey(),
-                //&user_transfer_authority.pubkey(),
-                &user_acct_owner.pubkey(),
+                &user_transfer_authority.pubkey(),
+                //&user_acct_owner.pubkey(),
                 user_token_accts,
                 &spl_token::id(),
                 user_lp_token_acct,
@@ -993,203 +991,215 @@ async fn run_fuzz_instruction<const TOKEN_COUNT: usize>(
                 minimum_mint_amount,
             )
             .unwrap();
+            println!("[DEV] created add_ix");
             ix_vec.push(add_ix);
+            //kp_vec.push(clone_keypair(user_acct_owner));
             (ix_vec, kp_vec)
         }
-        DeFiInstruction::SwapExactInput {
-            exact_input_amounts,
-            output_token_index,
-            minimum_output_amount,
-        } => {
-            let mut ix_vec = vec![];
-            let mut kp_vec = vec![clone_keypair(user_transfer_authority)];
-            for token_idx in 0..TOKEN_COUNT {
-                let input_amount = exact_input_amounts[token_idx];
-                if input_amount > 0 {
-                    approve_delegate(
-                        banks_client,
-                        correct_payer,
-                        &recent_blockhash,
-                        &user_token_accts[token_idx],
-                        &user_transfer_authority.pubkey(),
-                        user_acct_owner,
-                        input_amount,
-                    )
-                    .await
-                    .unwrap();
-                    //TODO: need to handle if input_amount > user_token_acct.supply
-                    // let approve_ix = approve(
-                    //     &spl_token::id(),
-                    //     &user_token_accts[token_idx],
-                    //     &user_transfer_authority.pubkey(),
-                    //     &user_acct_owner.pubkey(),
-                    //     &[&user_acct_owner.pubkey()],
-                    //     input_amount,
-                    // )
-                    // .unwrap();
-                    // kp_vec.push(clone_keypair(user_acct_owner));
-                    // ix_vec.push(approve_ix);
-                }
-            }
-            let swap_exact_input_ix = create_swap_exact_input_ix(
-                &pool::id(),
-                &pool.pool_keypair.pubkey(),
-                &pool.authority,
-                pool.get_token_account_pubkeys(),
-                &pool.lp_mint_keypair.pubkey(),
-                &pool.governance_fee_keypair.pubkey(),
-                &user_transfer_authority.pubkey(),
-                user_token_accts,
-                &spl_token::id(),
-                exact_input_amounts,
-                output_token_index,
-                minimum_output_amount,
-            )
-            .unwrap();
-
-            ix_vec.push(swap_exact_input_ix);
-
-            (ix_vec, kp_vec)
-        }
-        DeFiInstruction::SwapExactOutput {
-            maximum_input_amount,
-            input_token_index,
-            exact_output_amounts,
-        } => {
-            let mut ix_vec = vec![];
-            let mut kp_vec = vec![clone_keypair(user_transfer_authority)];
-            approve_delegate(
-                banks_client,
-                correct_payer,
-                &recent_blockhash,
-                &user_token_accts[input_token_index as usize],
-                &user_transfer_authority.pubkey(),
-                user_acct_owner,
-                maximum_input_amount,
-            )
-            .await
-            .unwrap();
-            // let approve_ix = approve(
-            //     &spl_token::id(),
-            //     &user_token_accts[input_token_index as usize],
-            //     &user_transfer_authority.pubkey(),
-            //     &user_acct_owner.pubkey(),
-            //     &[&user_acct_owner.pubkey()],
-            //     maximum_input_amount,
-            // )
-            // .unwrap();
-            // kp_vec.push(clone_keypair(user_acct_owner));
-            // ix_vec.push(approve_ix);
-
-            let swap_exact_output_ix = create_swap_exact_output_ix(
-                &pool::id(),
-                &pool.pool_keypair.pubkey(),
-                &pool.authority,
-                pool.get_token_account_pubkeys(),
-                &pool.lp_mint_keypair.pubkey(),
-                &pool.governance_fee_keypair.pubkey(),
-                &user_transfer_authority.pubkey(),
-                user_token_accts,
-                &spl_token::id(),
-                maximum_input_amount,
-                input_token_index,
-                exact_output_amounts,
-            )
-            .unwrap();
-
-            ix_vec.push(swap_exact_output_ix);
-
-            (ix_vec, kp_vec)
-        }
-        DeFiInstruction::RemoveUniform {
-            exact_burn_amount,
-            minimum_output_amounts,
-        } => {
-            let mut ix_vec = vec![];
-            let mut kp_vec = vec![clone_keypair(user_transfer_authority)];
-            // let approve_ix = approve(
-            //     &spl_token::id(),
-            //     user_lp_token_acct,
-            //     &user_transfer_authority.pubkey(),
-            //     &user_acct_owner.pubkey(),
-            //     &[&user_acct_owner.pubkey()],
-            //     exact_burn_amount,
-            // )
-            // .unwrap();
-            // kp_vec.push(clone_keypair(user_acct_owner));
-            // ix_vec.push(approve_ix);
-            approve_delegate(
-                banks_client,
-                correct_payer,
-                &recent_blockhash,
-                &user_lp_token_acct,
-                &user_transfer_authority.pubkey(),
-                user_acct_owner,
-                exact_burn_amount,
-            )
-            .await
-            .unwrap();
-
-            let remove_uniform_ix = create_remove_uniform_ix(
-                &pool::id(),
-                &pool.pool_keypair.pubkey(),
-                &pool.authority,
-                pool.get_token_account_pubkeys(),
-                &pool.lp_mint_keypair.pubkey(),
-                &pool.governance_fee_keypair.pubkey(),
-                &user_transfer_authority.pubkey(),
-                user_token_accts,
-                &spl_token::id(),
-                user_lp_token_acct,
-                exact_burn_amount,
-                minimum_output_amounts,
-            )
-            .unwrap();
-            ix_vec.push(remove_uniform_ix);
-
-            (ix_vec, kp_vec)
-        }
-        DeFiInstruction::RemoveExactBurn {
-            exact_burn_amount,
-            output_token_index,
-            minimum_output_amount,
-        } => {
+        _ => {
             let ix_vec = vec![];
             let kp_vec = vec![];
             (ix_vec, kp_vec)
-        }
-        DeFiInstruction::RemoveExactOutput {
-            maximum_burn_amount,
-            exact_output_amounts,
-        } => {
-            let ix_vec = vec![];
-            let kp_vec = vec![];
-            (ix_vec, kp_vec)
-        }
+        } // DeFiInstruction::SwapExactInput {
+          //     exact_input_amounts,
+          //     output_token_index,
+          //     minimum_output_amount,
+          // } => {
+          //     let mut ix_vec = vec![];
+          //     let mut kp_vec = vec![clone_keypair(&user_transfer_authority)];
+          //     for token_idx in 0..TOKEN_COUNT {
+          //         let input_amount = exact_input_amounts[token_idx];
+          //         if input_amount > 0 {
+          //             approve_delegate(
+          //                 banks_client,
+          //                 correct_payer,
+          //                 &recent_blockhash,
+          //                 &user_token_accts[token_idx],
+          //                 &user_transfer_authority.pubkey(),
+          //                 user_acct_owner,
+          //                 input_amount,
+          //             )
+          //             .await
+          //             .unwrap();
+          //             //TODO: need to handle if input_amount > user_token_acct.supply
+          //             // let approve_ix = approve(
+          //             //     &spl_token::id(),
+          //             //     &user_token_accts[token_idx],
+          //             //     &user_transfer_authority.pubkey(),
+          //             //     &user_acct_owner.pubkey(),
+          //             //     &[&user_acct_owner.pubkey()],
+          //             //     input_amount,
+          //             // )
+          //             // .unwrap();
+          //             // kp_vec.push(clone_keypair(user_acct_owner));
+          //             // ix_vec.push(approve_ix);
+          //         }
+          //     }
+          //     let swap_exact_input_ix = create_swap_exact_input_ix(
+          //         &pool::id(),
+          //         &pool.pool_keypair.pubkey(),
+          //         &pool.authority,
+          //         pool.get_token_account_pubkeys(),
+          //         &pool.lp_mint_keypair.pubkey(),
+          //         &pool.governance_fee_keypair.pubkey(),
+          //         &user_transfer_authority.pubkey(),
+          //         user_token_accts,
+          //         &spl_token::id(),
+          //         exact_input_amounts,
+          //         output_token_index,
+          //         minimum_output_amount,
+          //     )
+          //     .unwrap();
+
+          //     ix_vec.push(swap_exact_input_ix);
+
+          //     (ix_vec, kp_vec)
+          // }
+          // DeFiInstruction::SwapExactOutput {
+          //     maximum_input_amount,
+          //     input_token_index,
+          //     exact_output_amounts,
+          // } => {
+          //     let mut ix_vec = vec![];
+          //     let mut kp_vec = vec![clone_keypair(&user_transfer_authority)];
+          //     approve_delegate(
+          //         banks_client,
+          //         correct_payer,
+          //         &recent_blockhash,
+          //         &user_token_accts[input_token_index as usize],
+          //         &user_transfer_authority.pubkey(),
+          //         user_acct_owner,
+          //         maximum_input_amount,
+          //     )
+          //     .await
+          //     .unwrap();
+          //     // let approve_ix = approve(
+          //     //     &spl_token::id(),
+          //     //     &user_token_accts[input_token_index as usize],c
+          //     //     &user_transfer_authority.pubkey(),
+          //     //     &user_acct_owner.pubkey(),
+          //     //     &[&user_acct_owner.pubkey()],
+          //     //     maximum_input_amount,
+          //     // )
+          //     // .unwrap();
+          //     // kp_vec.push(clone_keypair(user_acct_owner));
+          //     // ix_vec.push(approve_ix);
+
+          //     let swap_exact_output_ix = create_swap_exact_output_ix(
+          //         &pool::id(),
+          //         &pool.pool_keypair.pubkey(),
+          //         &pool.authority,
+          //         pool.get_token_account_pubkeys(),
+          //         &pool.lp_mint_keypair.pubkey(),
+          //         &pool.governance_fee_keypair.pubkey(),
+          //         &user_transfer_authority.pubkey(),
+          //         user_token_accts,
+          //         &spl_token::id(),
+          //         maximum_input_amount,
+          //         input_token_index,
+          //         exact_output_amounts,
+          //     )
+          //     .unwrap();
+
+          //     ix_vec.push(swap_exact_output_ix);
+
+          //     (ix_vec, kp_vec)
+          // }
+          // DeFiInstruction::RemoveUniform {
+          //     exact_burn_amount,
+          //     minimum_output_amounts,
+          // } => {
+          //     let mut ix_vec = vec![];
+          //     let mut kp_vec = vec![clone_keypair(&user_transfer_authority)];
+          //     // let approve_ix = approve(
+          //     //     &spl_token::id(),
+          //     //     user_lp_token_acct,
+          //     //     &user_transfer_authority.pubkey(),
+          //     //     &user_acct_owner.pubkey(),
+          //     //     &[&user_acct_owner.pubkey()],
+          //     //     exact_burn_amount,
+          //     // )
+          //     // .unwrap();
+          //     // kp_vec.push(clone_keypair(user_acct_owner));
+          //     // ix_vec.push(approve_ix);
+          //     approve_delegate(
+          //         banks_client,
+          //         correct_payer,
+          //         &recent_blockhash,
+          //         &user_lp_token_acct,
+          //         &user_transfer_authority.pubkey(),
+          //         user_acct_owner,
+          //         exact_burn_amount,
+          //     )
+          //     .await
+          //     .unwrap();
+
+          //     let remove_uniform_ix = create_remove_uniform_ix(
+          //         &pool::id(),
+          //         &pool.pool_keypair.pubkey(),
+          //         &pool.authority,
+          //         pool.get_token_account_pubkeys(),
+          //         &pool.lp_mint_keypair.pubkey(),
+          //         &pool.governance_fee_keypair.pubkey(),
+          //         &user_transfer_authority.pubkey(),
+          //         user_token_accts,
+          //         &spl_token::id(),
+          //         user_lp_token_acct,
+          //         exact_burn_amount,
+          //         minimum_output_amounts,
+          //     )
+          //     .unwrap();
+          //     ix_vec.push(remove_uniform_ix);
+
+          //     (ix_vec, kp_vec)
+          // }
+          // DeFiInstruction::RemoveExactBurn {
+          //     exact_burn_amount,
+          //     output_token_index,
+          //     minimum_output_amount,
+          // } => {
+          //     let ix_vec = vec![];
+          //     let kp_vec = vec![];
+          //     (ix_vec, kp_vec)
+          // }
+          // DeFiInstruction::RemoveExactOutput {
+          //     maximum_burn_amount,
+          //     exact_output_amounts,
+          // } => {
+          //     let ix_vec = vec![];
+          //     let kp_vec = vec![];
+          //     (ix_vec, kp_vec)
+          // }
     };
 
     global_output_ixs.append(&mut output_ix);
     global_signer_keys.append(&mut signer_keys);
     let mut tx = Transaction::new_with_payer(&global_output_ixs, Some(&correct_payer.pubkey()));
+    println!("[DEV] created tx");
     let signers = [correct_payer]
         .iter()
         .map(|&v| v) // deref &Keypair
         .chain(global_signer_keys.iter())
         .collect::<Vec<&Keypair>>();
-
+    println!("[DEV] created signers vec");
     //Sign using some subset of required keys if recent_blockhash
     //  is not the same as currently in the transaction,
     //  clear any prior signatures and update recent_blockhash
     let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+    println!("[DEV] got recent_blockhash");
     tx.partial_sign(&signers, recent_blockhash);
+    //tx.sign(&signers, recent_blockhash);
+    println!("[DEV] finished partial sign");
     let res = banks_client.process_transaction(tx).await;
+    println!("[DEV] finished processing transcation");
     match res {
-        Ok(_) => {
+        ok @ Ok(_) => {
             println!(
                 "[DEV] txn processed successfully! pool account balances: {:?}. fuzz_ix processed: {:?}",
                 pool.get_token_account_balances(banks_client).await,
                 fuzz_instruction,
-            )
+            );
+            ()
         }
         Err(ref error) => match error {
             TransportError::TransactionError(te) => {
@@ -1201,10 +1211,10 @@ async fn run_fuzz_instruction<const TOKEN_COUNT: usize>(
                         InstructionError::InvalidArgument
                         // | InstructionError::InvalidInstructionData
                         // | InstructionError::InvalidAccountData
-                        // | InstructionError::InsufficientFunds
+                        | InstructionError::InsufficientFunds
                         // | InstructionError::AccountAlreadyInitialized
                         // | InstructionError::InvalidSeeds
-                        | InstructionError::Custom(2) // TokenError::InsufficientFunds
+                        | InstructionError::Custom(1) // TokenError::InsufficientFunds
                         | InstructionError::Custom(118) //PoolError::OutsideSpecifiedLimits
                         | InstructionError::Custom(120) //PoolError::ImpossibleRemove
                         => {
@@ -1243,6 +1253,10 @@ async fn run_fuzz_instruction<const TOKEN_COUNT: usize>(
                 panic!()
             }
         },
+        err => {
+            println!("[DEV] received something wasn't Ok or Err: {:?}", err);
+            panic!()
+        }
     }
 }
 

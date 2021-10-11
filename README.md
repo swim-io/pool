@@ -57,7 +57,8 @@ How to run fuzz tests on mac os x in docker container
 # 1. build docker container (only have to do this one time)
 $ docker build -t pool .
 # 2. run docker container
-$ docker run -it -v $(pwd):/app/ pool bash
+# $ docker run -it --security-opt seccomp=unrestricted -v $(pwd):/app/ pool bash 
+$ docker run -it --privileged -v $(pwd):/app/ pool bash 
 # should be in the docker container now
 $ cd fuzz
 $ BPF_OUT_DIR="/app/target/deploy" HFUZZ_RUN_ARGS="-t 100 -n 1 -N 500 -Q  " cargo hfuzz run pool_fuzz 
@@ -66,7 +67,8 @@ $ BPF_OUT_DIR="/app/target/deploy" HFUZZ_RUN_ARGS="-t 100 -n 1 -N 500 -Q -d -v -
 # -t = timeout in seconds
 # -n = number of threads
 # -N = number of iterations
-
+# --exit_upon_crash
+$ BPF_OUT_DIR="/app/target/deploy" cargo hfuzz run-debug pool_fuzz 'hfuzz_workspace/pool_fuzz/SIGABRT.PC.7f3088fedce1.STACK.19a84c71ce.CODE.-6.ADDR.0.INSTR.mov____0x108(%rsp),%rax.fuzz'
 ``` 
 
 if you run into an error on the last step with something like this:
