@@ -7,22 +7,16 @@ use borsh::de::BorshDeserialize;
 use helpers::*;
 use pool::decimal::*;
 use pool::entrypoint::TOKEN_COUNT;
-use solana_program::program_pack::{IsInitialized, Pack};
+use solana_program::program_pack::Pack;
 use solana_program_test::*;
 use solana_sdk::{
-    account::Account,
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    transaction::Transaction,
 };
-use spl_token::{
-    instruction::approve,
-    state::{Account as Token, AccountState, Mint},
-};
-use std::{assert, collections::BTreeMap, str::FromStr};
+use spl_token::state::Account as Token;
+use std::{assert, collections::BTreeMap};
 
 type AmountT = u64;
-type DecT = DecimalU64;
 
 #[tokio::test]
 async fn test_pool_init() {
@@ -113,7 +107,7 @@ async fn test_pool_add() {
     let mut deposit_tokens_to_mint_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut deposit_tokens_for_approval_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut inc: u64 = 1;
-    for i in 0..TOKEN_COUNT {
+    for _i in 0..TOKEN_COUNT {
         let approval_amount: u64 = inc * 100;
         let mint_amount: u64 = approval_amount * 2;
         deposit_tokens_to_mint_arrayvec.push(mint_amount);
@@ -150,8 +144,7 @@ async fn test_pool_add() {
     }
     let user_token_pubkeys = user_token_keypairs_arrvec.into_inner().unwrap();
     let user_token_balances_before = get_token_balances(&mut banks_client, user_token_pubkeys).await;
-    let user_lp_token_balances_before =
-        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    let user_lp_token_balances_before = get_token_balances(&mut banks_client, [user_lp_token_account.pubkey()]).await;
     assert_eq!(deposit_tokens_to_mint, user_token_balances_before);
     assert_eq!(0, user_lp_token_balances_before[0]);
     println!("[DEV] Executing add");
@@ -177,11 +170,9 @@ async fn test_pool_add() {
     println!("expected_user_token_balances: {:?}", expected_user_token_balances);
     println!("user_token_balances_after: {:?}", user_token_balances_after);
     assert_eq!(expected_user_token_balances, user_token_balances_after);
-    let user_lp_token_balance_after =
-        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    let user_lp_token_balance_after = get_token_balances(&mut banks_client, [user_lp_token_account.pubkey()]).await;
     println!("user_lp_token_balance_after: {:?}", user_lp_token_balance_after);
-    let governance_fee_balance =
-        get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
+    let governance_fee_balance = get_token_balances(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
     println!("governance_fee_balance: {:?}", governance_fee_balance);
 }
 
@@ -202,8 +193,6 @@ async fn test_pool_swap_exact_input() {
 
     let (mut banks_client, payer, _recent_blockhash) = test.start().await;
 
-    const RESERVE_AMOUNT: u64 = 42;
-
     let amp_factor = DecimalU64::new(1000, 0).unwrap();
     let lp_fee = DecimalU64::new(1000, 4).unwrap();
     let governance_fee = DecimalU64::new(1000, 5).unwrap();
@@ -221,7 +210,7 @@ async fn test_pool_swap_exact_input() {
     let mut deposit_tokens_to_mint_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut deposit_tokens_for_approval_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut inc: u64 = 1;
-    for i in 0..TOKEN_COUNT {
+    for _i in 0..TOKEN_COUNT {
         let approval_amount: u64 = inc * 100;
         let mint_amount: u64 = approval_amount * 2;
         deposit_tokens_to_mint_arrayvec.push(mint_amount);
@@ -257,8 +246,7 @@ async fn test_pool_swap_exact_input() {
     }
     let user_token_pubkeys = user_token_keypairs_arrvec.into_inner().unwrap();
     let user_token_balances_before = get_token_balances(&mut banks_client, user_token_pubkeys).await;
-    let user_lp_token_balances_before =
-        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    let user_lp_token_balances_before = get_token_balances(&mut banks_client, [user_lp_token_account.pubkey()]).await;
     assert_eq!(deposit_tokens_to_mint, user_token_balances_before);
     assert_eq!(0, user_lp_token_balances_before[0]);
     println!("[DEV] Executing add");
@@ -292,16 +280,14 @@ async fn test_pool_swap_exact_input() {
     println!("expected_user_token_balances: {:?}", expected_user_token_balances);
     println!("user_token_balances_after: {:?}", user_token_balances_after_tree);
     //assert_eq!(expected_user_token_balances, user_token_balances_after);
-    let user_lp_token_balance_after =
-        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    let user_lp_token_balance_after = get_token_balances(&mut banks_client, [user_lp_token_account.pubkey()]).await;
     println!("user_lp_token_balance_after: {:?}", user_lp_token_balance_after);
-    let governance_fee_balance =
-        get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
+    let governance_fee_balance = get_token_balances(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
     println!("governance_fee_balance: {:?}", governance_fee_balance);
 
     let mut exact_input_amounts_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut inc: u64 = 1;
-    for i in 0..TOKEN_COUNT - 1 {
+    for _i in 0..TOKEN_COUNT - 1 {
         let approval_amount: u64 = inc * 100;
         let mint_amount: u64 = approval_amount / 50;
         exact_input_amounts_arrayvec.push(mint_amount);
@@ -347,8 +333,7 @@ async fn test_pool_swap_exact_input() {
         );
     }
 
-    let governance_fee_balance =
-        get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
+    let governance_fee_balance = get_token_balances(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
     println!("governance_fee_balance: {:?}", governance_fee_balance);
 }
 
@@ -386,7 +371,7 @@ async fn test_pool_remove_uniform() {
     let mut deposit_tokens_to_mint_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut deposit_tokens_for_approval_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut inc: u64 = 1;
-    for i in 0..TOKEN_COUNT {
+    for _i in 0..TOKEN_COUNT {
         let approval_amount: u64 = inc * 100;
         let mint_amount: u64 = approval_amount * 2;
         deposit_tokens_to_mint_arrayvec.push(mint_amount);
@@ -423,8 +408,7 @@ async fn test_pool_remove_uniform() {
     }
     let user_token_pubkeys = user_token_keypairs_arrvec.into_inner().unwrap();
     let user_token_balances_before = get_token_balances(&mut banks_client, user_token_pubkeys).await;
-    let user_lp_token_balances_before =
-        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    let user_lp_token_balances_before = get_token_balances(&mut banks_client, [user_lp_token_account.pubkey()]).await;
     assert_eq!(deposit_tokens_to_mint, user_token_balances_before);
     assert_eq!(0, user_lp_token_balances_before[0]);
     println!("[DEV] Executing add");
@@ -522,7 +506,7 @@ async fn test_pool_remove_exact_burn() {
     let mut deposit_tokens_to_mint_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut deposit_tokens_for_approval_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut inc: u64 = 1;
-    for i in 0..TOKEN_COUNT {
+    for _i in 0..TOKEN_COUNT {
         let approval_amount: u64 = inc * 100;
         let mint_amount: u64 = approval_amount * 2;
         deposit_tokens_to_mint_arrayvec.push(mint_amount);
@@ -559,8 +543,7 @@ async fn test_pool_remove_exact_burn() {
     }
     let user_token_pubkeys = user_token_keypairs_arrvec.into_inner().unwrap();
     let user_token_balances_before = get_token_balances(&mut banks_client, user_token_pubkeys).await;
-    let user_lp_token_balances_before =
-        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    let user_lp_token_balances_before = get_token_balances(&mut banks_client, [user_lp_token_account.pubkey()]).await;
     assert_eq!(deposit_tokens_to_mint, user_token_balances_before);
     assert_eq!(0, user_lp_token_balances_before[0]);
     println!("[DEV] Executing add");
@@ -592,8 +575,8 @@ async fn test_pool_remove_exact_burn() {
     )
     .await;
 
-    let minimum_output_amount = 1;
-    let output_token_index = 0;
+    // let minimum_output_amount = 1;
+    // let output_token_index = 0;
     // println!("[DEV] execute_remove_uniform");
     // TODO: commented out for now due to underflow error
     // pool.execute_remove_exact_burn(
@@ -625,11 +608,9 @@ async fn test_pool_remove_exact_burn() {
     // assert!(user_token_balances_before[output_token_index] + minimum_output_amount >= user_token_balances_after_remove[output_token_index]);
 }
 
-/*************** Invariant Tests
-    1. lp_share/lp_supply_before * depth_before <= lp_share/lp_supply_after * depth_after
-        a. "your share of the depth of the pool must never decrease"
-        b. if lp_fee == 0 then your share should be the same otherwise it should increase
-*/
+// 1. lp_share/lp_supply_before * depth_before <= lp_share/lp_supply_after * depth_after
+//     a. "your share of the depth of the pool must never decrease"
+//     b. if lp_fee == 0 then your share should be the same otherwise it should increase
 
 #[tokio::test]
 async fn test_pool_swap_exact_input_lp_share() {
@@ -648,8 +629,6 @@ async fn test_pool_swap_exact_input_lp_share() {
 
     let (mut banks_client, payer, _recent_blockhash) = test.start().await;
 
-    const RESERVE_AMOUNT: u64 = 42;
-
     let amp_factor = DecimalU64::from(1);
     let lp_fee = DecimalU64::from(0);
     let governance_fee = DecimalU64::new(1000, 5).unwrap();
@@ -667,7 +646,7 @@ async fn test_pool_swap_exact_input_lp_share() {
     let mut deposit_tokens_to_mint_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut deposit_tokens_for_approval_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut inc: u64 = 1;
-    for i in 0..TOKEN_COUNT {
+    for _i in 0..TOKEN_COUNT {
         let approval_amount: u64 = inc * 100;
         let mint_amount: u64 = approval_amount * 2;
         deposit_tokens_to_mint_arrayvec.push(mint_amount);
@@ -703,8 +682,7 @@ async fn test_pool_swap_exact_input_lp_share() {
     }
     let user_token_pubkeys = user_token_keypairs_arrvec.into_inner().unwrap();
     let user_token_balances_before = get_token_balances(&mut banks_client, user_token_pubkeys).await;
-    let user_lp_token_balances_before =
-        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    let user_lp_token_balances_before = get_token_balances(&mut banks_client, [user_lp_token_account.pubkey()]).await;
     assert_eq!(deposit_tokens_to_mint, user_token_balances_before);
     assert_eq!(0, user_lp_token_balances_before[0]);
     println!("[DEV] Executing add");
@@ -743,16 +721,14 @@ async fn test_pool_swap_exact_input_lp_share() {
     println!("expected_user_token_balances: {:?}", expected_user_token_balances);
     println!("user_token_balances_after: {:?}", user_token_balances_after_tree);
     //assert_eq!(expected_user_token_balances, user_token_balances_after);
-    let user_lp_token_balance_after =
-        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    let user_lp_token_balance_after = get_token_balances(&mut banks_client, [user_lp_token_account.pubkey()]).await;
     println!("user_lp_token_balance_after: {:?}", user_lp_token_balance_after);
-    let governance_fee_balance =
-        get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
+    let governance_fee_balance = get_token_balances(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
     println!("governance_fee_balance: {:?}", governance_fee_balance);
 
     let mut exact_input_amounts_arrayvec = ArrayVec::<_, TOKEN_COUNT>::new();
     let mut inc: u64 = 1;
-    for i in 0..TOKEN_COUNT - 1 {
+    for _i in 0..TOKEN_COUNT - 1 {
         let approval_amount: u64 = inc * 100;
         let mint_amount: u64 = approval_amount / 50;
         exact_input_amounts_arrayvec.push(mint_amount);
@@ -763,11 +739,10 @@ async fn test_pool_swap_exact_input_lp_share() {
 
     println!("[DEV] exact_input_amounts: {:?}", exact_input_amounts);
 
-    /** Invariant Tests
-    1. lp_share/lp_supply_before * depth_before <= lp_share/lp_supply_after * depth_after
-        a. "your share of the depth of the pool must never decrease"
-        b. if lp_fee == 0 then your share should be the same otherwise it should increase
-    */
+    // 1. lp_share/lp_supply_before * depth_before <= lp_share/lp_supply_after * depth_after
+    //     a. "your share of the depth of the pool must never decrease"
+    //     b. if lp_fee == 0 then your share should be the same otherwise it should increase
+
     let lp_supply_before = get_mint_state(&mut banks_client, &pool.lp_mint_keypair.pubkey())
         .await
         .supply;
@@ -817,8 +792,7 @@ async fn test_pool_swap_exact_input_lp_share() {
         );
     }
 
-    let governance_fee_balance =
-        get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
+    let governance_fee_balance = get_token_balances(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
     println!("governance_fee_balance: {:?}", governance_fee_balance);
 
     let lp_supply_after = get_mint_state(&mut banks_client, &pool.lp_mint_keypair.pubkey())
@@ -930,8 +904,7 @@ async fn test_pool_add2() {
     }
     let user_token_pubkeys = user_token_keypairs_arrvec.into_inner().unwrap();
     let user_token_balances_before = get_token_balances(&mut banks_client, user_token_pubkeys).await;
-    let user_lp_token_balances_before =
-        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    let user_lp_token_balances_before = get_token_balances(&mut banks_client, [user_lp_token_account.pubkey()]).await;
     assert_eq!(deposit_tokens_to_mint, user_token_balances_before);
     assert_eq!(0, user_lp_token_balances_before[0]);
     println!("[DEV] Executing add");
@@ -957,11 +930,9 @@ async fn test_pool_add2() {
     println!("expected_user_token_balances: {:?}", expected_user_token_balances);
     println!("user_token_balances_after: {:?}", user_token_balances_after);
     assert_eq!(expected_user_token_balances, user_token_balances_after);
-    let user_lp_token_balance_after =
-        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account.pubkey()]).await;
+    let user_lp_token_balance_after = get_token_balances(&mut banks_client, [user_lp_token_account.pubkey()]).await;
     println!("user_lp_token_balance_after: {:?}", user_lp_token_balance_after);
-    let governance_fee_balance =
-        get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
+    let governance_fee_balance = get_token_balances(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
     println!("governance_fee_balance: {:?}", governance_fee_balance);
     let pool_token_balances = pool.get_token_account_balances(&mut banks_client).await;
     println!("pool_token_balances: {:?}", pool_token_balances);
@@ -1006,11 +977,9 @@ async fn test_pool_add2() {
     )
     .await;
 
-    let user_lp_token_balance_after =
-        get_token_balances::<{ 1 }>(&mut banks_client, [user_lp_token_account2.pubkey()]).await;
+    let user_lp_token_balance_after = get_token_balances(&mut banks_client, [user_lp_token_account2.pubkey()]).await;
     println!("user_lp_token_balance_after_2: {:?}", user_lp_token_balance_after);
-    let governance_fee_balance =
-        get_token_balances::<{ 1 }>(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
+    let governance_fee_balance = get_token_balances(&mut banks_client, [pool.governance_fee_keypair.pubkey()]).await;
     println!("governance_fee_balance: {:?}", governance_fee_balance);
     let pool_token_balances = pool.get_token_account_balances(&mut banks_client).await;
     println!("pool_token_balances_2: {:?}", pool_token_balances);

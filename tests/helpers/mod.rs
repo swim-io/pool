@@ -1,22 +1,16 @@
 // use assert_matches::*;
 use arrayvec::ArrayVec;
 use pool::{decimal::*, instruction::*, invariant::*};
-use solana_program::{
-    account_info::AccountInfo, hash::Hash, program_option::COption, program_pack::Pack, pubkey::Pubkey,
-    system_instruction,
-};
+use solana_program::{hash::Hash, program_pack::Pack, pubkey::Pubkey, system_instruction};
 use solana_program_test::*;
 use solana_sdk::{
     account::Account,
-    signature::{read_keypair_file, Keypair, Signer},
+    signature::{Keypair, Signer},
     system_instruction::create_account,
-    transaction::{Transaction, TransactionError},
+    transaction::Transaction,
     transport::TransportError,
 };
-use spl_token::{
-    instruction::approve,
-    state::{Account as Token, AccountState, Mint},
-};
+use spl_token::state::{Account as Token, Mint};
 use std::collections::BTreeMap;
 
 type AmountT = u64;
@@ -278,7 +272,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         for _i in 0..TOKEN_COUNT {
             user_token_keypairs_arrayvec.push(Keypair::new());
         }
-        let mut user_token_keypairs: [Keypair; TOKEN_COUNT] = user_token_keypairs_arrayvec.into_inner().unwrap();
+        let user_token_keypairs: [Keypair; TOKEN_COUNT] = user_token_keypairs_arrayvec.into_inner().unwrap();
         let recent_blockhash = banks_client.get_recent_blockhash().await.unwrap();
         for i in 0..TOKEN_COUNT {
             let token_mint = self.token_mint_keypairs[i].pubkey();
@@ -338,7 +332,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         &self,
         banks_client: &mut BanksClient,
         payer: &Keypair,
-        user_accounts_owner: &Keypair,
+        _user_accounts_owner: &Keypair,
         user_transfer_authority: &Keypair,
         user_token_accounts: &[Keypair; TOKEN_COUNT],
         token_program_account: &Pubkey,
@@ -398,7 +392,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         &self,
         banks_client: &mut BanksClient,
         payer: &Keypair,
-        user_accounts_owner: &Keypair,
+        _user_accounts_owner: &Keypair,
         authority: &Keypair,
         user_token_accounts: &[Keypair; TOKEN_COUNT],
         token_program_account: &Pubkey,
@@ -461,7 +455,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         &self,
         banks_client: &mut BanksClient,
         payer: &Keypair,
-        user_accounts_owner: &Keypair,
+        _user_accounts_owner: &Keypair,
         authority: &Keypair,
         user_token_accounts: &[Keypair; TOKEN_COUNT],
         token_program_account: &Pubkey,
@@ -497,7 +491,7 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
         &self,
         banks_client: &mut BanksClient,
         payer: &Keypair,
-        user_accounts_owner: &Keypair,
+        _user_accounts_owner: &Keypair,
         authority: &Keypair,
         user_token_accounts: &[Keypair; TOKEN_COUNT],
         token_program_account: &Pubkey,
