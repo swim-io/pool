@@ -72,7 +72,7 @@ $ BPF_OUT_DIR="/app/target/deploy" HFUZZ_RUN_ARGS="-t 10 -n 1 -N 100 -Q -d -v -l
 if you run into an error on the last step with something like this:
 "fatal error: ld terminated with signal 9"
 you need to go to Docker Desktop and increase the memory and swap then retry again
-
+cd
 
 ### Personal notes
 rebuild-token-vesting

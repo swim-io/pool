@@ -212,7 +212,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
-        //msg!("[DEV] processing defi ix");
+        msg!("[DEV] processing defi ix\n");
         let mut account_info_iter = accounts.iter();
         let pool_account = next_account_info(&mut account_info_iter)?;
         let mut pool_state = Self::check_and_deserialize_pool_state(pool_account, &program_id)?;
@@ -296,7 +296,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 input_amounts,
                 minimum_mint_amount,
             } => {
-                //msg!("[DEV] Processing Add ix");
+                msg!("[DEV] Processing Add ix");
                 if input_amounts.iter().all(|amount| *amount == 0) {
                     return Err(ProgramError::InvalidInstructionData);
                 }
@@ -327,7 +327,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
                 for i in 0..TOKEN_COUNT {
                     if input_amounts[i] > 0 {
-                        //msg!("[DEV] transferring {} for i = {}", input_amounts[i], i);
+                        msg!("[DEV] transferring {} for i = {}", input_amounts[i], i);
                         Self::transfer_token(
                             user_token_accounts[i],
                             pool_token_accounts[i],
@@ -619,7 +619,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         };
 
         if governance_mint_amount > 0 {
-            //msg!("[DEV] transferring {} as governance_fee", governance_mint_amount);
+            msg!("[DEV] transferring {} as governance_fee", governance_mint_amount);
             Self::mint_token(
                 lp_mint_account,
                 governance_fee_account,
