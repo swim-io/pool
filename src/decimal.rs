@@ -29,6 +29,15 @@ construct_uint! {
     pub struct U128(2);
 }
 
+impl U128 {
+    pub const fn const_from(value: u128) -> Self {
+        let mut ret = [0; 2];
+        ret[0] = value as u64;
+        ret[1] = (value >> 64) as u64;
+        Self(ret)
+    }
+}
+
 construct_uint! {
     pub struct U256(4);
 }
@@ -41,7 +50,7 @@ pub enum DecimalError {
     ConversionError,
 }
 
-const fn ten_to_the(exp: u8) -> u128 {
+pub const fn ten_to_the(exp: u8) -> u128 {
     TEN_TO_THE[exp as usize]
 }
 const U128_MAX_DECIMALS: usize = 39;

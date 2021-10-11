@@ -17,8 +17,10 @@ pub struct PoolState<const TOKEN_COUNT: usize> {
     pub governance_fee: PoolFee,
 
     pub lp_mint_key: Pubkey,
+    pub lp_decimal_equalizer: u8,
 
     pub token_mint_keys: [Pubkey; TOKEN_COUNT],
+    pub token_decimal_equalizers: [u8; TOKEN_COUNT],
     pub token_keys: [Pubkey; TOKEN_COUNT],
 
     pub governance_key: Pubkey,

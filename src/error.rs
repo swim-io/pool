@@ -57,8 +57,12 @@ pub enum PoolError {
     OutsideSpecifiedLimits,
     #[error("Initial add to pool must include all tokens")]
     AddRequiresAllTokens,
+
+    //120
     #[error("Remove can't completed due to the approximative nature of fee math implementation")]
     ImpossibleRemove,
+    #[error("The maximum difference in decimals between tokens in the pool has been exceeded")]
+    MaxDecimalDifferenceExceeded,
 }
 
 impl From<PoolError> for ProgramError {
