@@ -322,7 +322,18 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.lp_decimal_equalizer,
                 );
 
+                msg!(
+                    "[DEV] Add: {:?}, mint_amount: {:?}, governance_mint_amount: {:?}",
+                    defi_instruction,
+                    mint_amount,
+                    governance_mint_amount
+                );
+
                 if mint_amount < minimum_mint_amount {
+                    msg!(
+                        "[DEV] Returning OutsideSpecifiedLimits for Add ix: {:?}",
+                        defi_instruction
+                    );
                     return Err(PoolError::OutsideSpecifiedLimits.into());
                 }
 

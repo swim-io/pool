@@ -102,9 +102,13 @@ impl<const TOKEN_COUNT: usize> PoolInfo<TOKEN_COUNT> {
 
     pub async fn get_depth(&self, banks_client: &mut BanksClient, amp_factor: DecT) -> DecT {
         let token_account_balances: [AmountT; TOKEN_COUNT] = self.get_token_account_balances(banks_client).await;
-        //let pool_state = Self::deserialize_pool_state(banks_client).unwrap();
-        //println!("######################################## {:?}", token_account_balances);
-        DecT::from(Invariant::calculate_depth(&token_account_balances, amp_factor))
+        let converted_token_balances = token_account_balances
+            .iter()
+            .map(|&b| pool::invariant::AmountT::from(b))
+            .collect::<ArrayVec<_, TOKEN_COUNT>>()
+            .into_inner()
+            .unwrap();
+        DecT::from(Invariant::calculate_depth(&converted_token_balances, amp_factor).as_u64())
     }
 
     fn to_key_array(account_slice: &[Keypair; TOKEN_COUNT]) -> [Pubkey; TOKEN_COUNT] {
@@ -773,6 +777,9 @@ async fn run_fuzz_instructions<const TOKEN_COUNT: usize>(
         "[DEV] before pool token balances: {:?}",
         pool.get_token_account_balances(banks_client).await
     );
+
+    println!("[DEV] finished prepping pool");
+
     // let mut global_output_ixs = vec![];
     // let mut global_signer_keys = vec![];
     println!("[DEV] processing fuzz_instructions: {:?}", fuzz_instructions);
