@@ -495,7 +495,7 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         } else {
             initial_guess
         };
-        while abs_difference(depth, previous_depth) > Decimal::new(1, 10) {
+        while abs_difference(depth, previous_depth) > Decimal::new(5, 1) {
             previous_depth = depth;
 
             let reciprocal_decay = pool_balances_times_n
