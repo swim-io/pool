@@ -317,7 +317,7 @@ pub struct FuzzData<const TOKEN_COUNT: usize> {
     initial_user_token_amount: u64, // amount of EACH token that user will initially have
 }
 
-#[derive(Debug)]
+#[derive(Debug, Arbitrary)]
 pub struct FuzzInstruction<const TOKEN_COUNT: usize> {
     instruction: DeFiInstruction<TOKEN_COUNT>,
     user_acct_id: AccountId,
@@ -342,34 +342,103 @@ the pool balances should not diverge by more than 2 orders of magnitude (i.e. a 
 
 */
 
-impl<'a, const TOKEN_COUNT: usize> Arbitrary<'a> for FuzzData<TOKEN_COUNT> {
+// impl<T> Arbitrary for Vec<T>
+// where
+//     T: Arbitrary,
+// {
+//     fn arbitrary(u: &mut Unstructured<'_>) -> Result<Self> {
+//         let len = u.arbitrary_len::<T>()?;
+
+//     }
+// }
+
+#[derive(Debug)]
+pub struct FuzzData2<const TOKEN_COUNT: usize> {
+    fuzz_instructions: Vec<FuzzInstruction<TOKEN_COUNT>>,
+    max_magnitude: u32,
+    magnitude_bases: [u8; TOKEN_COUNT],
+    initial_user_base_amount: u8,
+}
+
+/*
+    Options:
+        1. don't generate any new arbitrary outside of instantiating the FuzzData2 fields
+            and check magnitudes during run_fuzz_ix
+*/
+impl<'a, const TOKEN_COUNT: usize> Arbitrary<'a> for FuzzData2<TOKEN_COUNT> {
     fn arbitrary(u: &mut Unstructured<'a>) -> ArbResult<Self> {
         let mut fuzz_instructions = vec![];
-        let mut magnitude_range: [u64; 3] = [0; 3];
-        let magnitude = u.int_in_range(5..=10).unwrap();
-        for m_idx in 0..magnitude_range.len() {
-            magnitude_range[m_idx] = (10 as u64).pow(magnitude + (m_idx as u32));
+        let max_magnitude = <u32 as Arbitrary<'a>>::arbitrary(u)?;
+        let mut magnitude_bases: [u8; TOKEN_COUNT] = <[u8; TOKEN_COUNT] as Arbitrary<'a>>::arbitrary(u)?;
+        // for i in 0..TOKEN_COUNT {
+        //     if magnitude_bases[i] == 0 {
+        //         magnitude_bases[i] += u.int_in_range(1..=u8::MAX).unwrap();
+        //     }
+        // }
+        let initial_user_base_amount: u8 = u.int_in_range(1..=u8::MAX).unwrap();
+        // println!("[DEV] Magnitude_bases: {:?}", magnitude_bases);
+        // let mut magnitude_range: [u64; 3] = [0; 3];
+        // let magnitude: u32 = u.int_in_range(5..=10).unwrap();
+        // for m_idx in 0..magnitude_range.len() {
+        //     magnitude_range[m_idx] = (10 as u64).pow(magnitude + (m_idx as u32));
+        // }
+        // let base: u64 = u.int_in_range(1..=9).unwrap();
+        //let max_magnitude =  magnitude_range[magnitude_range.len() - 1];
+        //let initial_user_token_amount: u64 = base * max_magnitude;
+        // let ixs_len: usize = u.arbitrary_len::<DeFiInstruction<TOKEN_COUNT>>()?;
+        // let ixs_len: usize = u.arbitrary_len::<FuzzInstruction<TOKEN_COUNT>>()?;
+        // println!("[DEV] ixs_len: {}", ixs_len);
+        let mut base_fuzz_ixs = <Vec<FuzzInstruction<TOKEN_COUNT>> as Arbitrary<'a>>::arbitrary(u)?;
+        println!("[DEV] base_fuzz_ixs.len: {}", base_fuzz_ixs.len());
+        //let ixs_len = u.int_in_range(1..=4)? as usize;
+        for i in 0..base_fuzz_ixs.len() {
+            let defi_ix = &mut base_fuzz_ixs[i].instruction;
+            let adjusted_dexi_ix = match defi_ix {
+                pool::instruction::DeFiInstruction::Add {
+                    input_amounts,
+                    minimum_mint_amount,
+                } => {
+                    for tkn_idx in 0..TOKEN_COUNT {
+                        let magnitude_base = u.choose(&magnitude_bases)?;
+                        base = u.int_in_range(1..=9).unwrap();
+                        magnitude = u.choose(&magnitude_range)?;
+                        let input_amount: u64 = base * magnitude;
+                        input_amounts[tkn_idx] = input_amount;
+                    }
+                    pool::instruction::DeFiInstruction::Add {
+                        input_amounts,
+                        minimum_mint_amount,
+                    }
+                }
+
+                _ => {}
+            };
         }
-        let initial_user_token_amount =
-            (u.int_in_range(1..=9).unwrap() * magnitude_range[magnitude_range.len() - 1]) as u64;
-        let ixs_len = u.int_in_range(1..=10)? as usize;
+        /*
         for ix_idx in 0..ixs_len {
             let base_defi_ix: DeFiInstruction<TOKEN_COUNT> = u.arbitrary()?;
             // let bounded_end = (TOKEN_COUNT - 1) as int32;
-            let bounded_index = u.int_in_range(0..=TOKEN_COUNT - 1)? as u8;
+            let bounded_index: u8 = u.int_in_range::<u8>(0..=(TOKEN_COUNT - 1) as u8)?;
             let ix: DeFiInstruction<TOKEN_COUNT> = match base_defi_ix {
                 pool::instruction::DeFiInstruction::Add {
                     input_amounts,
                     minimum_mint_amount,
                 } => {
-                    let mut m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
-                    let mut magnitude = magnitude_range[m_idx];
-                    let minimum_mint_amount = (u.int_in_range(1..=9).unwrap() * magnitude) as u64;
+                    // let range_end = magnitude_range.len() - 1;
+                    // let range: RangeInclusive<usize> = 0..=range_end;
+                    // let mut m_idx = u.int_in_range(range).unwrap() as usize;
+                    let mut magnitude = u.choose(&magnitude_range)?;
+                    //let mut magnitude = magnitude_range[m_idx];
+                    let mut base: u64 = u.int_in_range(1..=9).unwrap();
+                    let minimum_mint_amount = base * magnitude;
                     let mut input_amounts = [u64::MIN; TOKEN_COUNT];
                     for tkn_idx in 0..TOKEN_COUNT {
-                        m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
-                        magnitude = magnitude_range[m_idx];
-                        input_amounts[tkn_idx] = (u.int_in_range(1..=9).unwrap() * magnitude) as u64;
+                        //m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                        //magnitude = magnitude_range[m_idx];
+                        base = u.int_in_range(1..=9).unwrap();
+                        magnitude = u.choose(&magnitude_range)?;
+                        let input_amount: u64 = base * magnitude;
+                        input_amounts[tkn_idx] = input_amount;
                     }
                     pool::instruction::DeFiInstruction::Add {
                         input_amounts,
@@ -382,9 +451,12 @@ impl<'a, const TOKEN_COUNT: usize> Arbitrary<'a> for FuzzData<TOKEN_COUNT> {
                     minimum_output_amount,
                 } => {
                     for tkn_idx in 0..TOKEN_COUNT {
-                        let m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
-                        let magnitude = magnitude_range[m_idx];
-                        exact_input_amounts[tkn_idx] = (u.int_in_range(1..=9).unwrap() * magnitude) as u64;
+                        // let m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                        // let magnitude = magnitude_range[m_idx];
+                        let base: u64 = u.int_in_range(1..=9).unwrap();
+                        let magnitude = u.choose(&magnitude_range)?;
+                        let input_amount: u64 = base * magnitude;
+                        exact_input_amounts[tkn_idx] = input_amount;
                     }
                     exact_input_amounts[bounded_index as usize] = 0;
                     pool::instruction::DeFiInstruction::SwapExactInput {
@@ -398,14 +470,19 @@ impl<'a, const TOKEN_COUNT: usize> Arbitrary<'a> for FuzzData<TOKEN_COUNT> {
                     input_token_index,
                     exact_output_amounts: _exact_output_amounts,
                 } => {
-                    let mut m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
-                    let mut magnitude = magnitude_range[m_idx];
-                    let maximum_input_amount = (u.int_in_range(1..=9).unwrap() * magnitude) as u64;
+                    // let mut m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                    // let mut magnitude = magnitude_range[m_idx];
+                    let mut magnitude = u.choose(&magnitude_range)?;
+                    let mut base: u64 = u.int_in_range(1..=9).unwrap();
+
+                    let maximum_input_amount = base * magnitude;
                     let mut exact_output_amounts = [0; TOKEN_COUNT];
                     for tkn_idx in 0..TOKEN_COUNT {
-                        m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
-                        magnitude = magnitude_range[m_idx];
-                        exact_output_amounts[tkn_idx] = (u.int_in_range(1..=9).unwrap() * magnitude) as u64;
+                        // m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                        // magnitude = magnitude_range[m_idx];
+                        base = u.int_in_range(1..=9).unwrap();
+                        magnitude = u.choose(&magnitude_range)?;
+                        exact_output_amounts[tkn_idx] = base * magnitude;
                     }
                     exact_output_amounts[input_token_index as usize] = 0;
                     pool::instruction::DeFiInstruction::SwapExactOutput {
@@ -418,14 +495,18 @@ impl<'a, const TOKEN_COUNT: usize> Arbitrary<'a> for FuzzData<TOKEN_COUNT> {
                     exact_burn_amount: _exact_burn_amount,
                     minimum_output_amounts: _minimum_output_amounts,
                 } => {
-                    let mut m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
-                    let mut magnitude = magnitude_range[m_idx];
-                    let exact_burn_amount = (u.int_in_range(1..=9).unwrap() * magnitude) as u64;
+                    // let mut m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                    // let mut magnitude = magnitude_range[m_idx];
+                    let mut base: u64 = u.int_in_range(1..=9).unwrap();
+                    let mut magnitude = u.choose(&magnitude_range)?;
+                    let exact_burn_amount = base * magnitude;
                     let mut minimum_output_amounts = [0; TOKEN_COUNT];
                     for tkn_idx in 0..TOKEN_COUNT {
-                        m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
-                        magnitude = magnitude_range[m_idx];
-                        minimum_output_amounts[tkn_idx] = (u.int_in_range(1..=9).unwrap() * magnitude) as u64;
+                        // m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                        // magnitude = magnitude_range[m_idx];
+                        base = u.int_in_range(1..=9).unwrap();
+                        magnitude = u.choose(&magnitude_range)?;
+                        minimum_output_amounts[tkn_idx] = base * magnitude;
                     }
                     pool::instruction::DeFiInstruction::RemoveUniform {
                         exact_burn_amount,
@@ -437,9 +518,11 @@ impl<'a, const TOKEN_COUNT: usize> Arbitrary<'a> for FuzzData<TOKEN_COUNT> {
                     output_token_index,
                     minimum_output_amount,
                 } => {
-                    let m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
-                    let magnitude = magnitude_range[m_idx];
-                    let exact_burn_amount = (u.int_in_range(1..=9).unwrap() * magnitude) as u64;
+                    // let m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                    // let magnitude = magnitude_range[m_idx];
+                    let mut base:u64 = u.int_in_range(1..=9).unwrap();
+                    let magnitude = u.choose(&magnitude_range)?;
+                    let exact_burn_amount = base * magnitude;
                     pool::instruction::DeFiInstruction::RemoveExactBurn {
                         exact_burn_amount,
                         output_token_index: bounded_index,
@@ -450,13 +533,181 @@ impl<'a, const TOKEN_COUNT: usize> Arbitrary<'a> for FuzzData<TOKEN_COUNT> {
                     maximum_burn_amount,
                     mut exact_output_amounts,
                 } => {
-                    let mut m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
-                    let mut magnitude = magnitude_range[m_idx];
-                    let maximum_burn_amount = (u.int_in_range(1..=9).unwrap() * magnitude) as u64;
+                    // let mut m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                    // let mut magnitude = magnitude_range[m_idx];
+                    let mut base:u64 = u.int_in_range(1..=9).unwrap();
+                    let mut magnitude = u.choose(&magnitude_range)?;
+                    let maximum_burn_amount = base * magnitude;
                     for tkn_idx in 0..TOKEN_COUNT {
-                        m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
-                        magnitude = magnitude_range[m_idx];
-                        exact_output_amounts[tkn_idx] = (u.int_in_range(1..=9).unwrap() * magnitude) as u64;
+                        // m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                        // magnitude = magnitude_range[m_idx];
+                        base = u.int_in_range(1..=9).unwrap();
+                        magnitude = u.choose(&magnitude_range)?;
+                        exact_output_amounts[tkn_idx] = base * magnitude;
+                    }
+                    pool::instruction::DeFiInstruction::RemoveExactOutput {
+                        maximum_burn_amount,
+                        exact_output_amounts,
+                    }
+                }
+            };
+            fuzz_instructions.push(FuzzInstruction {
+                instruction: ix,
+                user_acct_id: u.arbitrary()?,
+            });
+        }
+        */
+        Ok(FuzzData2 {
+            fuzz_instructions,
+            max_magnitude,
+            magnitude_bases,
+            initial_user_base_amount,
+        })
+    }
+}
+impl<'a, const TOKEN_COUNT: usize> Arbitrary<'a> for FuzzData<TOKEN_COUNT> {
+    fn arbitrary(u: &mut Unstructured<'a>) -> ArbResult<Self> {
+        let mut fuzz_instructions = vec![];
+        let mut magnitude_range: [u64; 3] = [0; 3];
+        let magnitude: u32 = u.int_in_range(5..=10).unwrap();
+        for m_idx in 0..magnitude_range.len() {
+            magnitude_range[m_idx] = (10 as u64).pow(magnitude + (m_idx as u32));
+        }
+        let base: u64 = u.int_in_range(1..=9).unwrap();
+        let max_magnitude = magnitude_range[magnitude_range.len() - 1];
+        let initial_user_token_amount: u64 = base * max_magnitude;
+        // let ixs_len: usize = u.arbitrary_len::<DeFiInstruction<TOKEN_COUNT>>()?;
+        //let ixs_len: usize = u.arbitrary_len::<FuzzInstruction<TOKEN_COUNT>>()?;
+        let ixs_len = u.int_in_range(1..=4)? as usize;
+        for ix_idx in 0..ixs_len {
+            let base_defi_ix: DeFiInstruction<TOKEN_COUNT> = u.arbitrary()?;
+            // let bounded_end = (TOKEN_COUNT - 1) as int32;
+            let bounded_index: u8 = u.int_in_range(0..=TOKEN_COUNT - 1)? as u8;
+            let ix: DeFiInstruction<TOKEN_COUNT> = match base_defi_ix {
+                pool::instruction::DeFiInstruction::Add {
+                    input_amounts,
+                    minimum_mint_amount,
+                } => {
+                    // let range_end = magnitude_range.len() - 1;
+                    // let range: RangeInclusive<usize> = 0..=range_end;
+                    // let mut m_idx = u.int_in_range(range).unwrap() as usize;
+                    let mut magnitude = u.choose(&magnitude_range)?;
+                    //let mut magnitude = magnitude_range[m_idx];
+                    let mut base: u64 = u.int_in_range(1..=9).unwrap();
+                    let minimum_mint_amount = base * magnitude;
+                    let mut input_amounts = [u64::MIN; TOKEN_COUNT];
+                    for tkn_idx in 0..TOKEN_COUNT {
+                        //m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                        //magnitude = magnitude_range[m_idx];
+                        base = u.int_in_range(1..=9).unwrap();
+                        magnitude = u.choose(&magnitude_range)?;
+                        let input_amount: u64 = base * magnitude;
+                        input_amounts[tkn_idx] = input_amount;
+                    }
+                    pool::instruction::DeFiInstruction::Add {
+                        input_amounts,
+                        minimum_mint_amount,
+                    }
+                }
+                pool::instruction::DeFiInstruction::SwapExactInput {
+                    mut exact_input_amounts,
+                    output_token_index,
+                    minimum_output_amount,
+                } => {
+                    for tkn_idx in 0..TOKEN_COUNT {
+                        // let m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                        // let magnitude = magnitude_range[m_idx];
+                        let base: u64 = u.int_in_range(1..=9).unwrap();
+                        let magnitude = u.choose(&magnitude_range)?;
+                        let input_amount: u64 = base * magnitude;
+                        exact_input_amounts[tkn_idx] = input_amount;
+                    }
+                    exact_input_amounts[bounded_index as usize] = 0;
+                    pool::instruction::DeFiInstruction::SwapExactInput {
+                        exact_input_amounts,
+                        output_token_index: bounded_index,
+                        minimum_output_amount,
+                    }
+                }
+                pool::instruction::DeFiInstruction::SwapExactOutput {
+                    maximum_input_amount: _maximum_input_amount,
+                    input_token_index,
+                    exact_output_amounts: _exact_output_amounts,
+                } => {
+                    // let mut m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                    // let mut magnitude = magnitude_range[m_idx];
+                    let mut magnitude = u.choose(&magnitude_range)?;
+                    let mut base: u64 = u.int_in_range(1..=9).unwrap();
+
+                    let maximum_input_amount = base * magnitude;
+                    let mut exact_output_amounts = [0; TOKEN_COUNT];
+                    for tkn_idx in 0..TOKEN_COUNT {
+                        // m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                        // magnitude = magnitude_range[m_idx];
+                        base = u.int_in_range(1..=9).unwrap();
+                        magnitude = u.choose(&magnitude_range)?;
+                        exact_output_amounts[tkn_idx] = base * magnitude;
+                    }
+                    exact_output_amounts[input_token_index as usize] = 0;
+                    pool::instruction::DeFiInstruction::SwapExactOutput {
+                        maximum_input_amount,
+                        input_token_index: bounded_index,
+                        exact_output_amounts,
+                    }
+                }
+                pool::instruction::DeFiInstruction::RemoveUniform {
+                    exact_burn_amount: _exact_burn_amount,
+                    minimum_output_amounts: _minimum_output_amounts,
+                } => {
+                    // let mut m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                    // let mut magnitude = magnitude_range[m_idx];
+                    let mut base: u64 = u.int_in_range(1..=9).unwrap();
+                    let mut magnitude = u.choose(&magnitude_range)?;
+                    let exact_burn_amount = base * magnitude;
+                    let mut minimum_output_amounts = [0; TOKEN_COUNT];
+                    for tkn_idx in 0..TOKEN_COUNT {
+                        // m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                        // magnitude = magnitude_range[m_idx];
+                        base = u.int_in_range(1..=9).unwrap();
+                        magnitude = u.choose(&magnitude_range)?;
+                        minimum_output_amounts[tkn_idx] = base * magnitude;
+                    }
+                    pool::instruction::DeFiInstruction::RemoveUniform {
+                        exact_burn_amount,
+                        minimum_output_amounts,
+                    }
+                }
+                pool::instruction::DeFiInstruction::RemoveExactBurn {
+                    exact_burn_amount,
+                    output_token_index,
+                    minimum_output_amount,
+                } => {
+                    // let m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                    // let magnitude = magnitude_range[m_idx];
+                    let mut base: u64 = u.int_in_range(1..=9).unwrap();
+                    let magnitude = u.choose(&magnitude_range)?;
+                    let exact_burn_amount = base * magnitude;
+                    pool::instruction::DeFiInstruction::RemoveExactBurn {
+                        exact_burn_amount,
+                        output_token_index: bounded_index,
+                        minimum_output_amount,
+                    }
+                }
+                pool::instruction::DeFiInstruction::RemoveExactOutput {
+                    maximum_burn_amount,
+                    mut exact_output_amounts,
+                } => {
+                    // let mut m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                    // let mut magnitude = magnitude_range[m_idx];
+                    let mut base: u64 = u.int_in_range(1..=9).unwrap();
+                    let mut magnitude = u.choose(&magnitude_range)?;
+                    let maximum_burn_amount = base * magnitude;
+                    for tkn_idx in 0..TOKEN_COUNT {
+                        // m_idx = u.int_in_range(0..=magnitude_range.len() - 1).unwrap() as usize;
+                        // magnitude = magnitude_range[m_idx];
+                        base = u.int_in_range(1..=9).unwrap();
+                        magnitude = u.choose(&magnitude_range)?;
+                        exact_output_amounts[tkn_idx] = base * magnitude;
                     }
                     pool::instruction::DeFiInstruction::RemoveExactOutput {
                         maximum_burn_amount,
@@ -572,7 +823,24 @@ impl<'a, const TOKEN_COUNT: usize> Arbitrary<'a> for FuzzData<TOKEN_COUNT> {
 fn main() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     loop {
-        fuzz!(|fuzz_data: FuzzData<TOKEN_COUNT>| {
+        // fuzz!(|fuzz_data: FuzzData<TOKEN_COUNT>| {
+        //     let mut program_test =
+        //         ProgramTest::new("pool", pool::id(), processor!(Processor::<{ TOKEN_COUNT }>::process));
+
+        //     program_test.set_bpf_compute_max_units(200_000);
+
+        //     let mut test_state = rt.block_on(program_test.start_with_context());
+        //     println!("[DEV] Starting fuzz run with fuzz_data: {:?}", &fuzz_data);
+        //     rt.block_on(run_fuzz_instructions(
+        //         &mut test_state.banks_client,
+        //         test_state.payer,
+        //         test_state.last_blockhash,
+        //         &fuzz_data,
+        //     ));
+        //     println!("[DEV] Finished ruzz run with fuzz_data: {:?}", &fuzz_data);
+        // });
+
+        fuzz!(|fuzz_data: FuzzData2<TOKEN_COUNT>| {
             let mut program_test =
                 ProgramTest::new("pool", pool::id(), processor!(Processor::<{ TOKEN_COUNT }>::process));
 
@@ -580,12 +848,12 @@ fn main() {
 
             let mut test_state = rt.block_on(program_test.start_with_context());
             println!("[DEV] Starting fuzz run with fuzz_data: {:?}", &fuzz_data);
-            rt.block_on(run_fuzz_instructions(
-                &mut test_state.banks_client,
-                test_state.payer,
-                test_state.last_blockhash,
-                &fuzz_data,
-            ));
+            // rt.block_on(run_fuzz_instructions(
+            //     &mut test_state.banks_client,
+            //     test_state.payer,
+            //     test_state.last_blockhash,
+            //     &fuzz_data,
+            // ));
             println!("[DEV] Finished ruzz run with fuzz_data: {:?}", &fuzz_data);
         });
         // fuzz!(|fuzz_ixs: Vec<FuzzInstruction<TOKEN_COUNT>>| {

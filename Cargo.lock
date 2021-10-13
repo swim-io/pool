@@ -1574,6 +1574,7 @@ dependencies = [
  "arrayvec 0.7.1",
  "borsh",
  "borsh-derive",
+ "honggfuzz",
  "num-derive",
  "num-traits",
  "roots",

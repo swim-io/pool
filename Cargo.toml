@@ -36,7 +36,9 @@ num-derive = "0.3"
 #misc
 arrayvec = "0.7.1"
 
+
 arbitrary = { version = "1.0.2", features = ["derive"], optional = true}
+honggfuzz = {version = "0.5.54", optional = true }
 roots = { version = "0.0.7", optional = true }
 
 [dev-dependencies]
