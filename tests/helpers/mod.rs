@@ -1,6 +1,6 @@
 // use assert_matches::*;
 use arrayvec::ArrayVec;
-use pool::{decimal::*, instruction::*, invariant::*};
+use pool::{decimal::*, instruction::*, invariant::*, state::*};
 use solana_program::{hash::Hash, program_pack::Pack, pubkey::Pubkey, system_instruction};
 use solana_program_test::*;
 use solana_sdk::{
@@ -12,6 +12,7 @@ use solana_sdk::{
 };
 use spl_token::state::{Account as Token, Mint};
 use std::collections::BTreeMap;
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 
 type AmountT = u64;
 type DecT = DecimalU64;
@@ -90,23 +91,14 @@ impl<const TOKEN_COUNT: usize> TestPoolAccountInfo<TOKEN_COUNT> {
             .unwrap()
     }
 
-    // fn deserialize_pool_state(
-    //     &self,
-    //     banks_client: &mut BanksClient,
-    // ) -> Result<PoolState<TOKEN_COUNT>, ProgramError> {
-    //     let pool_account = get_account(banks_client, self.pool_keypair.pubkey()).await;
-    //     if pool_account.owner != pool::id() {
-    //         return Err(ProgramError::IllegalOwner);
-    //     }
+    pub async fn deserialize_pool_state(
+        &self,
+        banks_client: &mut BanksClient,
+    ) -> PoolState<TOKEN_COUNT> {
+        let pool_account = get_account(banks_client, &self.pool_keypair.pubkey()).await;
 
-    //     let pool_state = PoolState::<TOKEN_COUNT>::deserialize(&mut pool_account.data.as_slice())?;
-
-    //     if !pool_state.is_initialized() {
-    //         return Err(ProgramError::UninitializedAccount);
-    //     }
-
-    //     Ok(pool_state)
-    // }
+        PoolState::<TOKEN_COUNT>::deserialize(&mut pool_account.data.as_slice()).unwrap()
+    }
 
     pub async fn init_pool(
         &self,

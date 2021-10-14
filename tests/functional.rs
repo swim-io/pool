@@ -71,6 +71,7 @@ async fn test_pool_init() {
 
     let pool = pool::state::PoolState::<{ TOKEN_COUNT }>::try_from_slice(pool_account_data.data.as_slice()).unwrap();
     assert!(pool.is_initialized());
+    //println!(pool.deserialize_pool_state(&mut banks_client).await);
 }
 
 #[tokio::test]
@@ -296,8 +297,6 @@ async fn test_pool_swap_exact_input() {
     exact_input_amounts_arrayvec.push(0);
     let exact_input_amounts: [AmountT; TOKEN_COUNT] = exact_input_amounts_arrayvec.into_inner().unwrap();
 
-    println!("[DEV] exact_input_amounts: {:?}", exact_input_amounts);
-
     //TODO: do i need to revoke afterwards?
     println!("[DEV] preparing accounts for swap");
     pool.prepare_accounts_for_swap(
@@ -309,6 +308,12 @@ async fn test_pool_swap_exact_input() {
         exact_input_amounts,
     )
     .await;
+
+    println!("[DEV] exact_input_amounts: {:?}", exact_input_amounts);
+    println!(
+        "[DEV] pool balances: {:?}",
+        pool.get_token_account_balances(&mut banks_client).await
+    );
 
     let output_token_index: u8 = (TOKEN_COUNT - 1) as u8;
     pool.execute_swap_exact_input(
@@ -823,8 +828,8 @@ async fn test_pool_add2() {
 
     let (mut banks_client, payer, _recent_blockhash) = test.start().await;
 
-    let amp_factor = DecimalU64::new(1000, 0).unwrap();
-    let lp_fee = DecimalU64::new(99, 2).unwrap(); //3
+    let amp_factor = DecimalU64::new(1, 0).unwrap();
+    let lp_fee = DecimalU64::new(3, 6).unwrap();
     let governance_fee = DecimalU64::from(0);
     let pool = TestPoolAccountInfo::<{ TOKEN_COUNT }>::new();
     pool.init_pool(
@@ -838,28 +843,15 @@ async fn test_pool_add2() {
     .await;
     // u64 1 == 1/1_000_000 of a dollar = 0.000001
     //0.000500; 0.007560; 0.001500; 0.000002000
-    let deposit_tokens_to_mint: [AmountT; TOKEN_COUNT] = [
-        // 0.000_001
-        //DecimalU64::new(5, 4).unwrap().get_raw(),     // 0.000_500
-        50000, //5 x 10^1 / 10^6 =
-        //DecimalU64::new(756, 5).unwrap().get_raw(),   // 0.007_560
-        75600, // 7.56 * 10^2
-        //DecimalU64::new(15, 4).unwrap().get_raw(),    // 0.001_500
-        150000, //1.5 * 10^2
-        //DecimalU64::new(2, 3).unwrap().get_raw()      // 0.002_000
-        200000, // 2 * 10 ^ 2  / 10^6
-    ];
+    let deposit_tokens_to_mint = [AmountT::from(100_000_00000u64); TOKEN_COUNT];
 
     let deposit_tokens_for_approval: [AmountT; TOKEN_COUNT] = [
-        // 0.000_001
-        //DecimalU64::new(5, 4).unwrap().get_raw(),     // 0.000_500
-        50, //5 x 10^1 / 10^6 =
-        //DecimalU64::new(756, 5).unwrap().get_raw(),   // 0.007_560
-        756, // 7.56 * 10^2
-        //DecimalU64::new(15, 4).unwrap().get_raw(),    // 0.001_500
-        150, //1.5 * 10^2
-        //DecimalU64::new(2, 3).unwrap().get_raw()      // 0.002_000
-        200, // 2 * 10 ^ 2  / 10^6
+        5_590_41300,
+        6_341_33100,
+        4_947_04800,
+        3_226_82500,
+        2_560_56724,
+        3_339_50641,
     ];
 
     // println!("[DEV] deposit_tokens_to_mint: {:?}", deposit_tokens_to_mint);
@@ -940,15 +932,12 @@ async fn test_pool_add2() {
     println!("Repeating add");
 
     let deposit_tokens_for_approval: [AmountT; TOKEN_COUNT] = [
-        // 0.000_001
-        //DecimalU64::new(5, 4).unwrap().get_raw(),     // 0.000_500
-        //50, //5 x 10^1 / 10^6 =
-        0,   //DecimalU64::new(756, 5).unwrap().get_raw(),   // 0.007_560
-        756, // 7.56 * 10^2
-        //DecimalU64::new(15, 4).unwrap().get_raw(),    // 0.001_500
-        150, //1.5 * 10^2
-        //DecimalU64::new(2, 3).unwrap().get_raw()      // 0.002_000
-        200, // 2 * 10 ^ 2  / 10^6
+        10_000_00000,
+        9_000_00000,
+        11_000_00000,
+        12_000_00000,
+        13_000_00000,
+        12_000_00000,
     ];
 
     println!("Prep add 2");

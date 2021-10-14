@@ -224,6 +224,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 prepared_lp_fee: PoolFee::default(),
                 prepared_governance_fee: PoolFee::default(),
                 fee_transition_ts: 0,
+                previous_depth: 0,
             },
             &pool_account,
         )
@@ -237,7 +238,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         //msg!("[DEV] processing defi ix");
         let mut account_info_iter = accounts.iter();
         let pool_account = next_account_info(&mut account_info_iter)?;
-        let pool_state = Self::check_and_deserialize_pool_state(pool_account, &program_id)?;
+        let mut pool_state = Self::check_and_deserialize_pool_state(pool_account, &program_id)?;
         //msg!("[DEV] checked & deserialized pool_state");
 
         if pool_state.is_paused && !matches!(defi_instruction, DeFiInstruction::RemoveUniform { .. }) {
@@ -309,15 +310,17 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 .into_inner()
                 .unwrap()
         };
-        let result_from_equalized = |(user_amount, governance_mint_amount), user_equalizer| {
+        let result_from_equalized = |(user_amount, governance_mint_amount, latest_depth): (_, _, AmountT),
+                                     user_equalizer| {
             (
                 from_equalized(user_amount, user_equalizer),
                 from_equalized(governance_mint_amount, pool_state.lp_decimal_equalizer),
+                latest_depth.as_u128(),
             )
         };
 
         //msg!("[DEV] checked token_program_account");
-        let governance_mint_amount = match defi_instruction {
+        let (governance_mint_amount, latest_depth) = match defi_instruction {
             DeFiInstruction::Add {
                 input_amounts,
                 minimum_mint_amount,
@@ -334,7 +337,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
                 let user_lp_token_account = next_account_info(&mut account_info_iter)?;
 
-                let (mint_amount, governance_mint_amount) = result_from_equalized(
+                let (mint_amount, governance_mint_amount, latest_depth) = result_from_equalized(
                     Invariant::<TOKEN_COUNT>::add(
                         &array_equalize(&input_amounts),
                         &array_equalize(&pool_balances),
@@ -342,6 +345,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                         pool_state.lp_fee.get(),
                         pool_state.governance_fee.get(),
                         to_equalized(lp_total_supply, pool_state.lp_decimal_equalizer),
+                        pool_state.previous_depth.into(),
                     )?,
                     pool_state.lp_decimal_equalizer,
                 );
@@ -362,8 +366,6 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                         )?;
                     }
                 }
-                use solana_program::msg;
-                msg!("[DEV] lp_mint_amount: {}", mint_amount);
                 Self::mint_token(
                     lp_mint_account,
                     user_lp_token_account,
@@ -374,7 +376,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.nonce,
                 )?;
 
-                governance_mint_amount
+                (governance_mint_amount, latest_depth)
             }
 
             DeFiInstruction::RemoveUniform {
@@ -387,6 +389,9 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
                 let user_lp_token_account = next_account_info(&mut account_info_iter)?;
                 let user_share = DecT::from(exact_burn_amount) / lp_total_supply;
+                //TODO HACKY
+                let latest_depth =
+                    (pool_state.previous_depth * ((user_share * 10u64.pow(17)).trunc() as u128)) / 10u128.pow(17);
 
                 for i in 0..TOKEN_COUNT {
                     let output_amount = (pool_balances[i] * user_share).trunc();
@@ -412,7 +417,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     token_program_account,
                 )?;
 
-                0
+                (0, latest_depth)
             }
 
             DeFiInstruction::SwapExactInput {
@@ -428,7 +433,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     return Err(ProgramError::InvalidInstructionData);
                 }
 
-                let (output_amount, governance_mint_amount) = result_from_equalized(
+                let (output_amount, governance_mint_amount, latest_depth) = result_from_equalized(
                     Invariant::<TOKEN_COUNT>::swap_exact_input(
                         &array_equalize(&exact_input_amounts),
                         output_token_index,
@@ -437,6 +442,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                         pool_state.lp_fee.get(),
                         pool_state.governance_fee.get(),
                         to_equalized(lp_total_supply, pool_state.lp_decimal_equalizer),
+                        pool_state.previous_depth.into(),
                     )?,
                     pool_state.token_decimal_equalizers[output_token_index],
                 );
@@ -467,7 +473,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.nonce,
                 )?;
 
-                governance_mint_amount
+                (governance_mint_amount, latest_depth)
             }
 
             DeFiInstruction::SwapExactOutput {
@@ -488,7 +494,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     return Err(ProgramError::InvalidInstructionData);
                 }
 
-                let (input_amount, governance_mint_amount) = result_from_equalized(
+                let (input_amount, governance_mint_amount, latest_depth) = result_from_equalized(
                     Invariant::<TOKEN_COUNT>::swap_exact_output(
                         input_token_index,
                         &array_equalize(&exact_output_amounts),
@@ -497,6 +503,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                         pool_state.lp_fee.get(),
                         pool_state.governance_fee.get(),
                         to_equalized(lp_total_supply, pool_state.lp_decimal_equalizer),
+                        pool_state.previous_depth.into(),
                     )?,
                     pool_state.token_decimal_equalizers[input_token_index],
                 );
@@ -527,7 +534,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     }
                 }
 
-                governance_mint_amount
+                (governance_mint_amount, latest_depth)
             }
 
             DeFiInstruction::RemoveExactBurn {
@@ -542,7 +549,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
                 let user_lp_token_account = next_account_info(&mut account_info_iter)?;
 
-                let (output_amount, governance_mint_amount) = result_from_equalized(
+                let (output_amount, governance_mint_amount, latest_depth) = result_from_equalized(
                     Invariant::<TOKEN_COUNT>::remove_exact_burn(
                         to_equalized(exact_burn_amount, pool_state.lp_decimal_equalizer),
                         output_token_index,
@@ -551,6 +558,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                         pool_state.lp_fee.get(),
                         pool_state.governance_fee.get(),
                         to_equalized(lp_total_supply, pool_state.lp_decimal_equalizer),
+                        pool_state.previous_depth.into(),
                     )?,
                     pool_state.token_decimal_equalizers[output_token_index],
                 );
@@ -577,7 +585,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.nonce,
                 )?;
 
-                governance_mint_amount
+                (governance_mint_amount, latest_depth)
             }
 
             DeFiInstruction::RemoveExactOutput {
@@ -596,7 +604,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
                 let user_lp_token_account = next_account_info(&mut account_info_iter)?;
 
-                let (burn_amount, governance_mint_amount) = result_from_equalized(
+                let (burn_amount, governance_mint_amount, latest_depth) = result_from_equalized(
                     Invariant::<TOKEN_COUNT>::remove_exact_output(
                         &array_equalize(&exact_output_amounts),
                         &array_equalize(&pool_balances),
@@ -604,6 +612,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                         pool_state.lp_fee.get(),
                         pool_state.governance_fee.get(),
                         to_equalized(lp_total_supply, pool_state.lp_decimal_equalizer),
+                        pool_state.previous_depth.into(),
                     )?,
                     pool_state.lp_decimal_equalizer,
                 );
@@ -634,7 +643,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     }
                 }
 
-                governance_mint_amount
+                (governance_mint_amount, latest_depth)
             }
         };
 
@@ -651,7 +660,8 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             )?;
         }
 
-        Ok(())
+        pool_state.previous_depth = latest_depth;
+        Self::serialize_pool(&pool_state, pool_account)
     }
 
     fn process_governance_instruction(

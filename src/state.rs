@@ -30,6 +30,7 @@ pub struct PoolState<const TOKEN_COUNT: usize> {
     pub prepared_lp_fee: PoolFee,
     pub prepared_governance_fee: PoolFee,
     pub fee_transition_ts: UnixTimestamp,
+    pub previous_depth: u128,
 }
 
 impl<const TOKEN_COUNT: usize> PoolState<TOKEN_COUNT> {

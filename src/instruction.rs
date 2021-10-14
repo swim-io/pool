@@ -87,7 +87,7 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     ///     5. ..5 + TOKEN_COUNT `[s]` user transfer authority account
     ///     6. ..6 + TOKEN_COUNT `[w]` user token accounts
     ///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
-    ///     8. ..7 + (2 * TOKEN_COUNT) `[w]` user LP token account   
+    ///     8. ..7 + (2 * TOKEN_COUNT) `[w]` user LP token account
     Add {
         input_amounts: [AmountT; TOKEN_COUNT],
         minimum_mint_amount: AmountT,
@@ -142,7 +142,7 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     ///     5. ..5 + TOKEN_COUNT `[s]` user transfer authority account
     ///     6. ..6 + TOKEN_COUNT `[w]` user token accounts
     ///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
-    ///     8. ..7 + (2 * TOKEN_COUNT) `[w]` user LP token account to withdraw/burn from  
+    ///     8. ..7 + (2 * TOKEN_COUNT) `[w]` user LP token account to withdraw/burn from
     RemoveUniform {
         exact_burn_amount: AmountT,
         minimum_output_amounts: [AmountT; TOKEN_COUNT],
@@ -161,7 +161,7 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     ///     5. ..5 + TOKEN_COUNT `[s]` user transfer authority account
     ///     6. ..6 + TOKEN_COUNT `[w]` user token accounts
     ///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
-    ///     8. ..7 + (2 * TOKEN_COUNT) `[w]` user LP token account to withdraw/burn from  
+    ///     8. ..7 + (2 * TOKEN_COUNT) `[w]` user LP token account to withdraw/burn from
     RemoveExactBurn {
         exact_burn_amount: AmountT,
         output_token_index: u8,
@@ -179,7 +179,7 @@ pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     ///     5. ..5 + TOKEN_COUNT `[s]` user transfer authority account
     ///     6. ..6 + TOKEN_COUNT `[w]` user token accounts
     ///     7. ..6 + (2 * TOKEN_COUNT) `[]` SPL token program account
-    ///     8. ..7 + (2 * TOKEN_COUNT) `[w]` user LP token account to withdraw/burn from  
+    ///     8. ..7 + (2 * TOKEN_COUNT) `[w]` user LP token account to withdraw/burn from
     RemoveExactOutput {
         maximum_burn_amount: AmountT,
         exact_output_amounts: [AmountT; TOKEN_COUNT],
@@ -202,7 +202,7 @@ pub fn create_add_ix<const TOKEN_COUNT: usize>(
     minimum_mint_amount: AmountT,
 ) -> Result<Instruction, ProgramError> {
     let mut accounts = vec![
-        AccountMeta::new_readonly(*pool, false),
+        AccountMeta::new(*pool, false),
         AccountMeta::new_readonly(*authority, false),
     ];
     for i in 0..TOKEN_COUNT {
@@ -252,7 +252,7 @@ pub fn create_swap_exact_input_ix<const TOKEN_COUNT: usize>(
     minimum_output_amount: AmountT,
 ) -> Result<Instruction, ProgramError> {
     let mut accounts = vec![
-        AccountMeta::new_readonly(*pool, false),
+        AccountMeta::new(*pool, false),
         AccountMeta::new_readonly(*authority, false),
     ];
     for i in 0..TOKEN_COUNT {
@@ -302,7 +302,7 @@ pub fn create_remove_uniform_ix<const TOKEN_COUNT: usize>(
     minimum_output_amounts: [AmountT; TOKEN_COUNT],
 ) -> Result<Instruction, ProgramError> {
     let mut accounts = vec![
-        AccountMeta::new_readonly(*pool, false),
+        AccountMeta::new(*pool, false),
         AccountMeta::new_readonly(*authority, false),
     ];
     for i in 0..TOKEN_COUNT {
@@ -353,7 +353,7 @@ pub fn create_remove_exact_burn_ix<const TOKEN_COUNT: usize>(
     minimum_output_amount: AmountT,
 ) -> Result<Instruction, ProgramError> {
     let mut accounts = vec![
-        AccountMeta::new_readonly(*pool, false),
+        AccountMeta::new(*pool, false),
         AccountMeta::new_readonly(*authority, false),
     ];
     for i in 0..TOKEN_COUNT {
