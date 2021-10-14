@@ -38,6 +38,8 @@ num-derive = "0.3"
 arrayvec = "0.7.1"
 
 tokio = { version = "1.0", features = ["macros"]}
+rand  = "0.8.4"
+rand_chacha = "0.3.1"
 
 [[bin]]
 name = "pool_fuzz"
