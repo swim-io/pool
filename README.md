@@ -70,6 +70,10 @@ $ BPF_OUT_DIR="/app/target/deploy" HFUZZ_RUN_ARGS="-t 100 -n 1 -N 500 -Q -d -v -
 # --exit_upon_crash
 $ BPF_OUT_DIR="/app/target/deploy" cargo hfuzz run-debug pool_fuzz 'hfuzz_workspace/pool_fuzz/SIGABRT.PC.7f3088fedce1.STACK.19a84c71ce.CODE.-6.ADDR.0.INSTR.mov____0x108(%rsp),%rax.fuzz'
 ``` 
+minimal logging
+`export RUST_LOG=solana_runtime::system_instruction_processor=info,solana_runtime::message_processor=info,solana_bpf_loader=info,solana_rbpf=info,solana_program_test=info`
+
+`export RUST_LOG=solana_runtime::system_instruction_processor=info,solana_runtime::message_processor=debug,solana_bpf_loader=info,solana_rbpf=info`
 
 if you run into an error on the last step with something like this:
 "fatal error: ld terminated with signal 9"
