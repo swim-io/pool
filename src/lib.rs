@@ -9,4 +9,9 @@ pub mod invariant;
 pub mod pool_fee;
 pub mod processor;
 pub mod state;
-solana_program::declare_id!("4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM");
+
+// 4 Pool
+//solana_program::declare_id!("SWiMBJS9iBU1rMLAKBVfp73ThW1xPPwKdBHEU2JFpuo");
+
+// 6 Pool
+solana_program::declare_id!("SWiMDJYFUGj6cPrQ6QYYYWZtvXQdRChSVAygDZDsCHC");
