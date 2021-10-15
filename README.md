@@ -1,7 +1,7 @@
 # Pool Program
 
 A cross-chain AMM combined with Wormhole's bridging functionality to enable 
-native asset cross-chain swaps in a seamless and efficient manner.
+native asset cross-chain swaps in a seamless and efficient manner utilizing the stableswap invariant.
 
 
 ## Building
