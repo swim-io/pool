@@ -1,7 +1,6 @@
 # Pool Program
 
-A cross-chain AMM combined with Wormhole's bridging functionality to enable 
-native asset cross-chain swaps in a seamless and efficient manner utilizing the stableswap invariant.
+Rust smart contract for Solana liquidity pools with variable token number.
 
 
 ## Building
@@ -11,7 +10,7 @@ To build the Pool program, use the normal build command for Solana programs:
 cargo build-bpf
 ```
 
-To adjust the number of constituent tokens for the Pool Program, adjust the `TOKEN_COUNT` const in `src/entrypoint.rs` then rebuild the program
+
 
 ## Deployment
 To deploy the pool program:
@@ -24,15 +23,17 @@ To deploy the pool program:
   ```bash
   solana program deploy --program-id <path_to_keypair> ./target/deploy/pool.so
   ```
+4. To adjust the number of constituent tokens for the Pool Program, adjust the `TOKEN_COUNT` const in `src/entrypoint.rs` then rebuild and deploy the program to a new program_id
 
 ## Audits and Security
-Coming soon
+Audit scheduled, starting ~Nov 1st 2021
 
 ## Mainnet Deployments
-4 Pool: `SWiMBJS9iBU1rMLAKBVfp73ThW1xPPwKdBHEU2JFpuo`
-6 Pool: `SWiMDJYFUGj6cPrQ6QYYYWZtvXQdRChSVAygDZDsCHC`
+Pools with 4 Tokens: `SWiMBJS9iBU1rMLAKBVfp73ThW1xPPwKdBHEU2JFpuo`
 
-## Running Functional Tests
+Pools with 6 Tokens: `SWiMDJYFUGj6cPrQ6QYYYWZtvXQdRChSVAygDZDsCHC`
+
+## Running Tests
 
 ```bash
 cd swim/pool
