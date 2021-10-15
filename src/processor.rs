@@ -1,4 +1,3 @@
-use arrayvec::ArrayVec;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::UnixTimestamp,
@@ -10,7 +9,6 @@ use solana_program::{
     pubkey::Pubkey,
     sysvar::{clock::Clock, rent::Rent, Sysvar},
 };
-use std::fmt;
 
 use spl_token::{
     error::TokenError,
@@ -21,6 +19,7 @@ use spl_token::{
 
 use crate::{
     amp_factor::AmpFactor,
+    common::{create_array, create_result_array},
     decimal::DecimalU64,
     error::PoolError,
     instruction::{DeFiInstruction, GovernanceInstruction, PoolInstruction},
@@ -42,7 +41,6 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
     pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
         //msg!("[DEV] process - TOKEN_COUNT: {}", TOKEN_COUNT);
         match PoolInstruction::<TOKEN_COUNT>::try_from_slice(instruction_data)? {
-            //all this boiler-plate could probably be replaced by implementing a procedural macro on PoolInstruction
             PoolInstruction::Init {
                 nonce,
                 amp_factor,
@@ -122,9 +120,9 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             return Err(PoolError::MintHasFreezeAuthority.into());
         }
 
-        let token_mint_accounts = Self::get_array(|_| check_duplicate_and_get_next())?;
+        let token_mint_accounts: [_; TOKEN_COUNT] = create_result_array(|_| check_duplicate_and_get_next())?;
         //msg!("[DEV] token_mint_accounts.len: {}", token_mint_accounts.len());
-        let token_accounts = Self::get_array(|_| check_duplicate_and_get_next())?;
+        let token_accounts: [_; TOKEN_COUNT] = create_result_array(|_| check_duplicate_and_get_next())?;
         //msg!("[DEV] token_accounts.len: {}", token_accounts.len());
 
         struct MinMax {
@@ -136,20 +134,15 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             max: lp_mint_state.decimals,
         };
         //msg!("[DEV] passed lp_mint_account checks");
-        let token_decimals = (0..TOKEN_COUNT)
-            .into_iter()
-            .map(|i| {
-                let mint_decimals = Self::check_program_owner_and_unpack::<MintState>(token_mint_accounts[i])?.decimals;
-                if decimal_range.min > mint_decimals {
-                    decimal_range.min = mint_decimals;
-                } else if decimal_range.max < mint_decimals {
-                    decimal_range.max = mint_decimals;
-                }
-                Ok(mint_decimals)
-            })
-            .collect::<Result<ArrayVec<_, TOKEN_COUNT>, ProgramError>>()?
-            .into_inner()
-            .unwrap();
+        let token_decimals: [_; TOKEN_COUNT] = create_result_array(|i| -> Result<_, ProgramError> {
+            let mint_decimals = Self::check_program_owner_and_unpack::<MintState>(token_mint_accounts[i])?.decimals;
+            if decimal_range.min > mint_decimals {
+                decimal_range.min = mint_decimals;
+            } else if decimal_range.max < mint_decimals {
+                decimal_range.max = mint_decimals;
+            }
+            Ok(mint_decimals)
+        })?;
 
         if decimal_range.max - decimal_range.min > MAX_DECIMAL_DIFFERENCE {
             return Err(PoolError::MaxDecimalDifferenceExceeded.into());
@@ -158,8 +151,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         for i in 0..TOKEN_COUNT {
             let token_account = token_accounts[i];
             //msg!("[DEV] checking token_state[{}]. Pubkey: {}", i, token_account.key);
-            //let token_state = Self::check_program_owner_and_unpack::<TokenState>(token_account)?;
-            let token_state = TokenState::unpack(&token_account.data.borrow())?;
+            let token_state = Self::check_program_owner_and_unpack::<TokenState>(token_account)?;
 
             if token_state.mint != *token_mint_accounts[i].key {
                 return Err(TokenError::MintMismatch.into());
@@ -189,22 +181,6 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         }
         //msg!("[DEV] passed checking governance & governance_fee accounts");
 
-        let token_decimal_equalizers = token_decimals
-            .iter()
-            .map(|&token_decimal| decimal_range.max - token_decimal)
-            .collect::<ArrayVec<_, TOKEN_COUNT>>()
-            .into_inner()
-            .unwrap();
-
-        let to_key_array = |account_array: &[&AccountInfo; TOKEN_COUNT]| -> [Pubkey; TOKEN_COUNT] {
-            account_array
-                .iter()
-                .map(|account| account.key.clone())
-                .collect::<ArrayVec<_, TOKEN_COUNT>>()
-                .into_inner()
-                .unwrap()
-        };
-
         Self::serialize_pool(
             &PoolState {
                 nonce,
@@ -214,9 +190,9 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 governance_fee: PoolFee::new(governance_fee)?,
                 lp_mint_key: lp_mint_account.key.clone(),
                 lp_decimal_equalizer: decimal_range.max - lp_mint_state.decimals,
-                token_mint_keys: to_key_array(&token_mint_accounts),
-                token_decimal_equalizers,
-                token_keys: to_key_array(&token_accounts),
+                token_mint_keys: create_array(|i| token_mint_accounts[i].key.clone()),
+                token_decimal_equalizers: create_array(|i| decimal_range.max - token_decimals[i]),
+                token_keys: create_array(|i| token_accounts[i].key.clone()),
                 governance_key: governance_account.key.clone(),
                 governance_fee_key: governance_fee_account.key.clone(),
                 prepared_governance_key: Pubkey::default(),
@@ -250,20 +226,19 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
             return Err(PoolError::InvalidPoolAuthorityAccount.into());
         }
         //msg!("[DEV] checked pool authority");
-        let pool_token_accounts = {
-            let check_pool_token_account = |i| {
-                // -> Result<&AccountInfo, ProgramError>
+        let pool_token_accounts: [_; TOKEN_COUNT] = {
+            let check_pool_token_account = |i| -> Result<_, ProgramError> {
                 let pool_token_account = next_account_info(&mut account_info_iter)?;
                 if *pool_token_account.key != pool_state.token_keys[i] {
                     return Err(PoolError::PoolTokenAccountExpected.into());
                 }
                 Ok(pool_token_account)
             };
-            Self::get_array(check_pool_token_account)?
+            create_result_array(check_pool_token_account)?
         };
         //msg!("[DEV] checked pool token accounts");
 
-        let pool_balances = Self::get_array(|i| {
+        let pool_balances: [_; TOKEN_COUNT] = create_result_array(|i| -> Result<_, ProgramError> {
             Ok(Self::check_program_owner_and_unpack::<TokenState>(pool_token_accounts[i])?.amount)
         })?;
 
@@ -282,7 +257,8 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
         let user_authority_account = next_account_info(&mut account_info_iter)?;
         //msg!("[DEV] checked user_authority_account");
-        let user_token_accounts = Self::get_array(|_| Ok(next_account_info(&mut account_info_iter)?))?;
+        let user_token_accounts: [_; TOKEN_COUNT] =
+            create_result_array(|_| -> Result<_, ProgramError> { Ok(next_account_info(&mut account_info_iter)?) })?;
         //msg!("[DEV] checked user_token_accounts");
         let token_program_account = next_account_info(&mut account_info_iter)?;
 
@@ -301,14 +277,8 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 value.as_u64()
             }
         };
-        let array_equalize = |amounts: &[AtomicT; TOKEN_COUNT]| {
-            amounts
-                .iter()
-                .enumerate()
-                .map(|(i, &amount)| to_equalized(amount, pool_state.token_decimal_equalizers[i]))
-                .collect::<ArrayVec<_, TOKEN_COUNT>>()
-                .into_inner()
-                .unwrap()
+        let array_equalize = |amounts: &[AtomicT; TOKEN_COUNT]| -> [_; TOKEN_COUNT] {
+            create_array(|i| to_equalized(amounts[i], pool_state.token_decimal_equalizers[i]))
         };
         let result_from_equalized = |(user_amount, governance_mint_amount, latest_depth): (_, _, AmountT),
                                      user_equalizer| {
@@ -927,17 +897,5 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         let current_ts = Clock::get()?.unix_timestamp;
         assert!(current_ts > 0);
         Ok(current_ts)
-    }
-
-    fn get_array<R>(closure: impl FnMut(usize) -> Result<R, ProgramError>) -> Result<[R; TOKEN_COUNT], ProgramError>
-    where
-        R: fmt::Debug,
-    {
-        Ok((0..TOKEN_COUNT)
-            .into_iter()
-            .map(closure)
-            .collect::<Result<ArrayVec<_, TOKEN_COUNT>, _>>()?
-            .into_inner()
-            .unwrap()) //we can unwrap because we know that there is enough capacity
     }
 }

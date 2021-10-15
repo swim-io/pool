@@ -15,7 +15,6 @@ pub fn process_instruction<'a>(
     //     accounts.len(),
     //     instruction_data
     // );
-
     let result = Processor::<TOKEN_COUNT>::process(program_id, accounts, instruction_data);
     if let Err(error) = &result {
         msg!("process_instruction: failed: {}", to_error_msg(&error));

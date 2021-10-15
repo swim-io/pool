@@ -410,7 +410,7 @@ macro_rules! unsigned_decimal {
                 if decimals > Self::MAX_DECIMALS {
                     Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        "decimals value out of bounds",
+                        format!("decimals value out of bounds: {}", decimals),
                     ))
                 } else {
                     Ok(Self { value, decimals })

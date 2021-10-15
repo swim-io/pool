@@ -1,4 +1,5 @@
 pub mod amp_factor;
+pub mod common;
 pub mod decimal;
 #[cfg(not(feature = "no-entrypoint"))]
 pub mod entrypoint;
