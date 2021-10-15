@@ -43,3 +43,6 @@ cargo test-bpf -- --show-output --nocapture --test-threads=1 2>&1 | ./sol_spam_f
 # run specific test
 cargo test-bpf -- --test test_pool_init --show-output
 ```
+
+## Disclaimer
+Use at your own risk. Swim Protocol Foundation, and its representatives and agents disclaim all warranties, express or implied, related to the application you are accessing, and are not liable for any transactions you conduct thereon or losses that may result therefrom. US Persons are not permitted to access or use this application.
