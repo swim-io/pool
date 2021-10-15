@@ -16,7 +16,7 @@ use spl_token::state::{Account as TokenState, Mint as MintState};
 
 // limit to track compute unit increase.
 // Mainnet compute budget as of 08/25/2021 is 200_000
-pub const COMPUTE_BUDGET: u64 = 300_000;
+pub const COMPUTE_BUDGET: u64 = 200_000;
 
 pub type AmountT = u64;
 pub type DecT = DecimalU64;
