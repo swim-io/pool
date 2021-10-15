@@ -1,20 +1,45 @@
-# pool
+# Pool Program
 
-## TODOs
-1. posssibly refactor ix names to follow standard semantics
-   1. Add -> Deposit
-   2. RemoveX -> WithdrawX
+A cross-chain AMM combined with Wormhole's bridging functionality to enable 
+native asset cross-chain swaps in a seamless and efficient manner.
 
-## Developer Notes
-- don't use `msg!()` in test-bpf tests. use `println!` and  `cargo test-bpf -- --show-output` 
-- run `cargo fmt` to use `rustfmt`
-  - configurations are in `rustfmt.toml`
-### Running Tests
+
+## Building
+To build the Pool program, use the normal build command for Solana programs:
+
 ```bash
-$ cd swim/pool
-# run all tests
-$ cargo test-bpf -- --show-output
-# run specific test
-$ cargo test-bpf -- --test test_pool_init --show-output
+cargo build-bpf
 ```
 
+To adjust the number of constituent tokens for the Pool Program, adjust the `TOKEN_COUNT` const in `src/entrypoint.rs` then rebuild the program
+
+## Deployment
+To deploy the pool program:
+1. Check that the `TOKEN_COUNT` const is set to the number of constituent tokens you want the pool program to initialize
+2. Build the program:
+  ```bash
+  cargo build-bpf
+  ```
+3. Deploy the program using:
+  ```bash
+  solana program deploy --program-id <path_to_keypair> ./target/deploy/pool.so
+  ```
+
+## Audits and Security
+Coming soon
+
+## Mainnet Deployments
+4 Pool: `SWiMBJS9iBU1rMLAKBVfp73ThW1xPPwKdBHEU2JFpuo`
+6 Pool: `SWiMDJYFUGj6cPrQ6QYYYWZtvXQdRChSVAygDZDsCHC`
+
+## Running Functional Tests
+
+```bash
+cd swim/pool
+# run all tests
+cargo test-bpf -- --show-output
+# run all tests with suppressed noisy logs
+cargo test-bpf -- --show-output --nocapture --test-threads=1 2>&1 | ./sol_spam_filter.py
+# run specific test
+cargo test-bpf -- --test test_pool_init --show-output
+```
