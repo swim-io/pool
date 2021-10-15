@@ -3,7 +3,7 @@
 mod helpers;
 
 use helpers::*;
-use pool::{common::*, entrypoint::TOKEN_COUNT, instruction::*};
+use pool::{common::*, instruction::*, TOKEN_COUNT};
 use solana_program_test::*;
 
 struct Parameters {
