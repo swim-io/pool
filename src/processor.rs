@@ -251,7 +251,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         let lp_total_supply = Self::check_program_owner_and_unpack::<MintState>(lp_mint_account)?.supply;
         let governance_fee_account = next_account_info(&mut account_info_iter)?;
         if *governance_fee_account.key != pool_state.governance_fee_key {
-            return Err(PoolError::InvalidGovernanceFeeAccout.into());
+            return Err(PoolError::InvalidGovernanceFeeAccount.into());
         }
         //msg!("[DEV] checked governacen_fee_account");
 
@@ -697,7 +697,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 if governance_fee_key != Pubkey::default() {
                     let governance_fee_account = next_account_info(account_info_iter)?;
                     if *governance_fee_account.key != governance_fee_key {
-                        return Err(PoolError::InvalidGovernanceFeeAccout.into());
+                        return Err(PoolError::InvalidGovernanceFeeAccount.into());
                     }
 
                     let governance_fee_state =
@@ -706,7 +706,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                         return Err(TokenError::MintMismatch.into());
                     }
                 } else if pool_state.governance_fee.get() == DecT::from(0) {
-                    return Err(PoolError::InvalidGovernanceFeeAccout.into());
+                    return Err(PoolError::InvalidGovernanceFeeAccount.into());
                 }
 
                 pool_state.governance_fee_key = governance_fee_key;
