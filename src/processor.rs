@@ -665,6 +665,12 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     return Err(PoolError::InsufficientDelay.into());
                 }
 
+                if pool_state.prepared_governance_fee.get() > DecT::from(0)
+                    && pool_state.governance_fee_key == Pubkey::default()
+                {
+                    return Err(PoolError::InvalidGovernanceFeeAccount.into());
+                }
+
                 pool_state.lp_fee = pool_state.prepared_lp_fee;
                 pool_state.governance_fee = pool_state.prepared_governance_fee;
                 pool_state.prepared_lp_fee = PoolFee::default();
@@ -705,7 +711,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     if governance_fee_state.mint != pool_state.lp_mint_key {
                         return Err(TokenError::MintMismatch.into());
                     }
-                } else if pool_state.governance_fee.get() == DecT::from(0) {
+                } else if pool_state.governance_fee.get() != DecT::from(0) {
                     return Err(PoolError::InvalidGovernanceFeeAccount.into());
                 }
 
