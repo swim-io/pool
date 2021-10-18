@@ -90,7 +90,7 @@ def print_with_framing(frame_char, text, color):
     midlen = TESTCASE_FORMAT_SIZE - (len(text) + 2)
     print(
         frame_char * int((midlen + 1) / 2),
-        colored(suitename.upper(), color, attrs=["bold"]),
+        colored(text, color, attrs=["bold"]),
         frame_char * int(midlen / 2),
     )
 
