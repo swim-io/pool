@@ -788,7 +788,7 @@ macro_rules! impl_interop {
 
 impl_interop! {DecimalU64, DecimalU128, to_uint128, U128}
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "test-bpf")))]
 mod tests {
     use super::*;
 

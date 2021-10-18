@@ -590,7 +590,7 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "test-bpf")))]
 mod tests {
     use super::*;
     use crate::decimal::DecimalU128;

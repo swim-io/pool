@@ -105,7 +105,7 @@ impl AmpFactor {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "test-bpf")))]
 mod tests {
     use super::*;
 
