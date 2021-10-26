@@ -5,7 +5,6 @@ mod helpers;
 use helpers::*;
 use pool::{common::*, entrypoint::TOKEN_COUNT, instruction::*};
 use solana_program_test::*;
-use solana_sdk::account::Account;
 
 struct Parameters {
     amp_factor: DecT,
@@ -235,7 +234,7 @@ async fn test_expensive_add() {
 }
 
 #[tokio::test]
-async fn generate_test_ix_data_vector() {
+async fn generate_test_data_vectors() {
     let initial_balances: [AmountT; TOKEN_COUNT] =
         [5_590_413, 6_341_331, 4_947_048, 3_226_825, 2_560_56724, 3_339_50641];
 
