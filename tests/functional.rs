@@ -232,3 +232,130 @@ async fn test_expensive_add() {
         .await
         .unwrap();
 }
+
+// #[tokio::test]
+// async fn test_expensive_add2() {
+//     let initial_balances: [AmountT; TOKEN_COUNT] = [
+//         28_799_968_080,
+//         28_799_968_080,
+//         8_861_528_640,
+//         8_492_298_280,
+//         6_646_146_480,
+//         19_569_209_080,
+//     ];
+
+//     let user_add: [AmountT; TOKEN_COUNT] = [
+//         2_879_996_964,
+//         664_614_684,
+//         1_956_921_014,
+//         3_507_688_610,
+//         664_614_684,
+//         2_879_996_964,
+//     ];
+
+//     let params = Parameters {
+//         amp_factor: DecT::from(1000),
+//         lp_fee: DecT::new(2000, 5).unwrap(),
+//         governance_fee: DecT::new(1000, 5).unwrap(),
+//         lp_decimals: 6,
+//         // stable_decimals: create_array(|i| if i < 4 { 6 } else { 8 }),
+//         stable_decimals: create_array(|_| 6),
+//         pool_balances: create_array(|i| initial_balances[i]),
+//         user_funds: create_array(|i| user_add[i]),
+//     };
+
+//     let (mut solnode, pool, user, _) = setup_standard_testcase(&params).await;
+
+//     user.stable_approve(&params.user_funds, &mut solnode);
+//     let defi_ix = DeFiInstruction::Add {
+//         input_amounts: params.user_funds,
+//         minimum_mint_amount: 3_507_688_610 as AmountT,
+//     };
+//     pool.execute_defi_instruction(defi_ix, &user.stables, Some(&user.lp), &mut solnode)
+//         .await
+//         .unwrap();
+// }
+
+// #[tokio::test]
+// async fn test_expensive_add3() {
+//     let initial_balances: [AmountT; TOKEN_COUNT] = [
+//         289_625_991_284,
+//         469_587_772_276,
+//         289_625_991_284,
+//         469_587_772_276,
+//         303_685_505_424,
+//         165_902_266_852,
+//     ];
+
+//     let user_add: [AmountT; TOKEN_COUNT] = [
+//         31_809_650_787,
+//         23_373_942_291,
+//         33_742_833_984,
+//         33_742_833_984,
+//         33_742_833_984,
+//         33_742_833_984,
+//     ];
+
+//     let params = Parameters {
+//         amp_factor: DecT::from(1000),
+//         lp_fee: DecT::new(2000, 5).unwrap(),
+//         governance_fee: DecT::new(1000, 5).unwrap(),
+//         lp_decimals: 6,
+//         stable_decimals: create_array(|_| 6),
+//         pool_balances: create_array(|i| initial_balances[i]),
+//         user_funds: create_array(|i| user_add[i]),
+//     };
+
+//     let (mut solnode, pool, user, _) = setup_standard_testcase(&params).await;
+
+//     user.stable_approve(&params.user_funds, &mut solnode);
+//     let defi_ix = DeFiInstruction::Add {
+//         input_amounts: params.user_funds,
+//         minimum_mint_amount: 31_809_650_787 as AmountT,
+//     };
+//     pool.execute_defi_instruction(defi_ix, &user.stables, Some(&user.lp), &mut solnode)
+//         .await
+//         .unwrap();
+// }
+
+// #[tokio::test]
+// async fn test_expensive_add4() {
+//     let initial_balances: [AmountT; TOKEN_COUNT] = [
+//         289_625_991_284,
+//         469_587_772_276,
+//         289_625_991_284,
+//         469_587_772_276,
+//         303_685_505_424,
+//         165_902_266_852,
+//     ];
+
+//     let user_add: [AmountT; TOKEN_COUNT] = [
+//         28_962_599_046,
+//         69_453_999_654,
+//         53_988_534_144,
+//         50_895_441_042,
+//         50_895_441_042,
+//         37_398_307_506,
+//     ];
+
+//     let params = Parameters {
+//         amp_factor: DecT::from(1000),
+//         lp_fee: DecT::new(2000, 5).unwrap(),
+//         governance_fee: DecT::new(1000, 5).unwrap(),
+//         lp_decimals: 6,
+//         stable_decimals: create_array(|_| 6),
+//         pool_balances: create_array(|i| initial_balances[i]),
+//         user_funds: create_array(|i| user_add[i]),
+//     };
+
+//     let (mut solnode, pool, user, _) = setup_standard_testcase(&params).await;
+
+//     user.stable_approve(&params.user_funds, &mut solnode);
+//     let defi_ix = DeFiInstruction::Add {
+//         input_amounts: params.user_funds,
+//         minimum_mint_amount: 3_507_688_610 as AmountT,
+//     };
+//     pool.execute_defi_instruction(defi_ix, &user.stables, Some(&user.lp), &mut solnode)
+//         .await
+//         .unwrap();
+// }
