@@ -5,6 +5,7 @@ mod helpers;
 use helpers::*;
 use pool::{common::*, entrypoint::TOKEN_COUNT, instruction::*};
 use solana_program_test::*;
+use solana_sdk::account::Account;
 
 struct Parameters {
     amp_factor: DecT,
@@ -231,4 +232,49 @@ async fn test_expensive_add() {
     pool.execute_defi_instruction(defi_ix, &user.stables, Some(&user.lp), &mut solnode)
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn generate_test_ix_data_vector() {
+    let initial_balances: [AmountT; TOKEN_COUNT] =
+        [5_590_413, 6_341_331, 4_947_048, 3_226_825, 2_560_56724, 3_339_50641];
+
+    let user_add: [AmountT; TOKEN_COUNT] = [
+        10_000_000,
+        9_000_000,
+        11_000_000,
+        12_000_000,
+        13_000_00000,
+        12_000_00000,
+    ];
+
+    let params = Parameters {
+        amp_factor: DecT::new(1000, 0).unwrap(),
+        lp_fee: DecT::new(3, 6).unwrap(),
+        governance_fee: DecT::new(1, 6).unwrap(),
+        lp_decimals: 6,
+        stable_decimals: create_array(|i| if i < 4 { 6 } else { 8 }),
+        pool_balances: create_array(|i| initial_balances[i]),
+        user_funds: create_array(|i| user_add[i]),
+    };
+
+    let (mut solnode, pool, user, _) = setup_standard_testcase(&params).await;
+
+    let pool_account_data = pool.account_data(&mut solnode).await;
+    println!("pool_account_data: {:?}", &pool_account_data);
+    println!("pool_account_data(base64): {:?}", base64::encode(&pool_account_data));
+    println!("pool_account_data(hex): {:?}", hex::encode(&pool_account_data));
+
+    user.stable_approve(&params.user_funds, &mut solnode);
+    let defi_ix = DeFiInstruction::Add {
+        input_amounts: params.user_funds,
+        minimum_mint_amount: 0 as AmountT,
+    };
+    let pool_defi_ix = pool
+        .generate_test_pool_defi_ix(defi_ix, &user.stables, Some(&user.lp), &mut solnode)
+        .unwrap();
+
+    println!("pool_defi_ix.data: {:?}", &pool_defi_ix.data);
+    println!("pool_defi_ix.data(base64): {:?}", base64::encode(&pool_defi_ix.data));
+    println!("pool_defi_ix.data(hex): {:?}", hex::encode(&pool_defi_ix.data));
 }

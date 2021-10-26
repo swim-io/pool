@@ -1705,8 +1705,10 @@ name = "pool"
 version = "0.1.0"
 dependencies = [
  "arrayvec 0.7.1",
+ "base64 0.13.0",
  "borsh",
  "borsh-derive",
+ "hex",
  "num-derive",
  "num-traits",
  "rust_decimal",

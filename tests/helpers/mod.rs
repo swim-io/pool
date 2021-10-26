@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use borsh::BorshDeserialize;
 use pool::{common::*, decimal::*, entrypoint::TOKEN_COUNT, instruction::*, state::PoolState};
-use solana_program::{program_pack::Pack, pubkey::Pubkey, rent::Rent};
+use solana_program::{program_error::ProgramError, program_pack::Pack, pubkey::Pubkey, rent::Rent};
 
 use solana_program_test::*;
 use solana_sdk::{
@@ -344,11 +344,37 @@ impl DeployedPool {
         PoolState::<TOKEN_COUNT>::deserialize(&mut pool_account.data.as_slice()).unwrap()
     }
 
+    pub async fn account_data(&self, solnode: &mut SolanaNode) -> Vec<u8> {
+        solnode.get_account_state(&self.pool_keypair.pubkey()).await.data
+    }
+
     pub async fn lp_total_supply(&self, solnode: &mut SolanaNode) -> AmountT {
         MintAccount::get_state(&self.lp_mint, solnode).await.supply
     }
 
     pub fn create_lp_account(&self, solnode: &mut SolanaNode) -> TokenAccount {
         TokenAccount::internal_new(&self.lp_mint, solnode)
+    }
+
+    pub fn generate_test_pool_defi_ix(
+        &self,
+        defi_instruction: DeFiInstruction<TOKEN_COUNT>,
+        user_stable_accounts: &[TokenAccount; TOKEN_COUNT],
+        user_lp_account: Option<&TokenAccount>,
+        solnode: &mut SolanaNode,
+    ) -> Result<Instruction, ProgramError> {
+        create_defi_ix(
+            defi_instruction,
+            &pool::id(),
+            &self.pool_keypair.pubkey(),
+            &self.authority,
+            &self.stable_accounts,
+            &self.lp_mint,
+            &self.governance_fee_account,
+            &solnode.default_delegate().pubkey(),
+            &create_array(|i| *user_stable_accounts[i].pubkey()),
+            &spl_token::id(),
+            user_lp_account.map(|account| account.pubkey()),
+        )
     }
 }
