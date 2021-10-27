@@ -250,23 +250,94 @@ pub fn create_defi_ix<const TOKEN_COUNT: usize>(
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub enum GovernanceInstruction<const TOKEN_COUNT: usize> {
-    PrepareFeeChange {
-        lp_fee: DecT,
-        governance_fee: DecT,
-    },
+    /// Sets the lp_fee and governance_fee values that the pool
+    /// will transition to
+    ///
+    /// Accounts expected by this instruction:
+    ///     0. `[w]` The pool state account
+    ///     1. `[s]` Pool Governance Account
+    PrepareFeeChange { lp_fee: DecT, governance_fee: DecT },
+
+    /// Sets the `pool.lp_fee` and `pool.governance_fee` using the
+    /// values from `pool.prepared_lp_fee` and `pool.prepared_governance_fee`
+    ///
+    ///
+    /// Accounts expected by this instruction:
+    ///     0. `[w]` The pool state account
+    ///     1. `[s]` Pool Governance Account
     EnactFeeChange {},
-    PrepareGovernanceTransition {
-        upcoming_governance_key: Pubkey,
-    },
+
+    /// Sets the governance account that the pool
+    /// will transition to
+    ///
+    ///
+    /// Accounts expected by this instruction:
+    ///     0. `[w]` The pool state account
+    ///     1. `[s]` Pool Governance Account
+    PrepareGovernanceTransition { upcoming_governance_key: Pubkey },
+
+    /// Applies the prepared governance account as the
+    /// current governance account
+    ///
+    ///
+    /// Accounts expected by this instruction:
+    ///     0. `[w]` The pool state account
+    ///     1. `[s]` Pool Governance Account
     EnactGovernanceTransition {},
-    ChangeGovernanceFeeAccount {
-        governance_fee_key: Pubkey,
-    },
+
+    /// Switches the governance fee account
+    ///
+    ///
+    /// Accounts expected by this instruction:
+    ///     0. `[w]` The pool state account
+    ///     1. `[s]` Pool Governance Account
+    ///     2. `[]`  New Governance Fee account
+    ChangeGovernanceFeeAccount { governance_fee_key: Pubkey },
+
+    /// Adjusts the amp factor for the pool
+    ///
+    ///
+    /// Accounts expected by this instruction:
+    ///     0. `[w]` The pool state account
+    ///     1. `[s]` Pool Governance Account
     AdjustAmpFactor {
         target_ts: UnixTimestamp,
         target_value: DecT,
     },
-    SetPaused {
-        paused: bool,
-    },
+
+    /// Pause/Unpauses the pool
+    ///
+    ///
+    /// Accounts expected by this instruction:
+    ///     0. `[w]` The pool state account
+    ///     1. `[s]` Pool Governance Account
+    SetPaused { paused: bool },
+}
+
+pub fn create_governance_ix<const TOKEN_COUNT: usize>(
+    gov_instruction: GovernanceInstruction<TOKEN_COUNT>,
+    program_id: &Pubkey,
+    pool: &Pubkey,
+    governance_account: &Pubkey,
+    governance_fee_account: Option<&Pubkey>,
+) -> Result<Instruction, ProgramError> {
+    let mut accounts = vec![
+        AccountMeta::new(*pool, false),
+        AccountMeta::new_readonly(*governance_account, true),
+    ];
+
+    match gov_instruction {
+        GovernanceInstruction::ChangeGovernanceFeeAccount { .. } => {
+            accounts.push(AccountMeta::new_readonly(*governance_fee_account.unwrap(), false))
+        }
+        _ => {
+            assert!(governance_fee_account.is_none());
+        }
+    }
+
+    Ok(Instruction {
+        program_id: *program_id,
+        accounts,
+        data: PoolInstruction::GovernanceInstruction(gov_instruction).try_to_vec()?,
+    })
 }
