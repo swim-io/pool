@@ -3,8 +3,10 @@
 mod helpers;
 
 use helpers::*;
-use pool::{common::*, entrypoint::TOKEN_COUNT, instruction::*};
+use pool::{common::*, entrypoint::TOKEN_COUNT, instruction::*, pool_fee::*};
 use solana_program_test::*;
+use solana_sdk::signature::{Keypair, Signer};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 struct Parameters {
     amp_factor: DecT,
@@ -177,6 +179,46 @@ async fn test_pool_swap_exact_input() {
 }
 
 #[tokio::test]
+async fn test_pool_swap_exact_output() {
+    let params = default_params();
+    let (mut solnode, pool, user, _) = setup_standard_testcase(&params).await;
+    let mut exact_output_amounts = create_array(|i| i as u64 * params.user_funds[i] / 100);
+    exact_output_amounts[0] = 0;
+
+    let mut approve_amounts = create_array(|i| if i == 0 { u64::MAX } else { 0 });
+
+    user.stable_approve(&approve_amounts, &mut solnode);
+    let defi_ix = DeFiInstruction::SwapExactOutput {
+        maximum_input_amount: u64::MAX as AmountT,
+        input_token_index: 0,
+        exact_output_amounts,
+    };
+
+    let lp_supply_before = pool.lp_total_supply(&mut solnode).await;
+    let depth_before = pool.state(&mut solnode).await.previous_depth;
+    println!("> user balance before: {:?}", user.stable_balances(&mut solnode).await);
+    pool.execute_defi_instruction(defi_ix, &user.stables, None, &mut solnode)
+        .await
+        .unwrap();
+
+    let depth_after = pool.state(&mut solnode).await.previous_depth;
+    let lp_supply_after = pool.lp_total_supply(&mut solnode).await;
+    // lp_share/lp_supply_before * depth_before <= lp_share/lp_supply_after * depth_after
+    //  a. "your share of the depth of the pool must never decrease"
+    //  b. if lp_fee == 0 then your share should be the same otherwise it should increase
+    if params.lp_fee + params.governance_fee == 0 {
+        assert_eq!(
+            depth_before,
+            (depth_after * lp_supply_before as u128) / lp_supply_after as u128
+        );
+    } else {
+        assert!(depth_before <= (depth_after * lp_supply_before as u128) / lp_supply_after as u128);
+    }
+
+    println!(">  user balance after: {:?}", user.stable_balances(&mut solnode).await);
+}
+
+#[tokio::test]
 async fn test_pool_remove_uniform() {
     let mut params = default_params();
     params.user_funds = [0; TOKEN_COUNT];
@@ -228,6 +270,286 @@ async fn test_expensive_add() {
         input_amounts: params.user_funds,
         minimum_mint_amount: 0 as AmountT,
     };
+    pool.execute_defi_instruction(defi_ix, &user.stables, Some(&user.lp), &mut solnode)
+        .await
+        .unwrap();
+}
+
+// #[tokio::test]
+// // about 264_000 compute budget used for the remove
+// async fn test_expensive_remove() {
+//     let initial_balances: [AmountT; TOKEN_COUNT] = [
+//         195_269_254_200,
+//         68_344_238_970,
+//         165_978_866_070,
+//         11_933_121_090,
+//         11_933_121_090,
+//         195_269_254_200
+//     ];
+//
+//     let user_add: [AmountT; TOKEN_COUNT] = [
+//         10_000_000,
+//         9_000_000,
+//         11_000_000,
+//         12_000_000,
+//         13_000_00000,
+//         12_000_00000,
+//     ];
+
+//     let exact_output_amounts: [AmountT; TOKEN_COUNT] =     [
+//         4_271_514_975,
+//         745_820_075,
+//         10_373_679_225,
+//         10_373_679_225,
+//         4_271_514_975,
+//         12_204_328_500
+//     ];
+
+//     let maximum_burn_amount = u64::MAX; //12_204_328_500;
+
+//     let params = Parameters {
+//         amp_factor: DecT::new(1000, 0).unwrap(),
+//         lp_fee: DecT::new(3, 6).unwrap(),
+//         governance_fee: DecT::new(1, 6).unwrap(),
+//         lp_decimals: 6,
+//         stable_decimals: create_array(|i| if i < 4 { 6 } else { 8 }),
+//         pool_balances: create_array(|i| initial_balances[i]),
+//         user_funds: create_array(|i| user_add[i]),
+//     };
+
+//     let (mut solnode, pool, _, lp_collective) = setup_standard_testcase(&params).await;
+
+//     lp_collective.lp.approve(maximum_burn_amount, &mut solnode);
+
+//     let defi_ix = DeFiInstruction::RemoveExactOutput {
+//         maximum_burn_amount,
+//         exact_output_amounts,
+//     };
+
+//     pool.execute_defi_instruction(defi_ix,  &lp_collective.stables, Some(&lp_collective.lp), &mut solnode)
+//         .await
+//         .unwrap();
+// }
+
+/* Governance Ix tests */
+#[tokio::test]
+async fn test_prepare_fee_change() {
+    let initial_balances: [AmountT; TOKEN_COUNT] =
+        [5_590_413, 6_341_331, 4_947_048, 3_226_825, 2_560_56724, 3_339_50641];
+
+    let user_add: [AmountT; TOKEN_COUNT] = [
+        10_000_000,
+        9_000_000,
+        11_000_000,
+        12_000_000,
+        13_000_00000,
+        12_000_00000,
+    ];
+
+    let params = Parameters {
+        amp_factor: DecT::new(1000, 0).unwrap(),
+        lp_fee: DecT::new(3, 6).unwrap(),
+        governance_fee: DecT::new(1, 6).unwrap(),
+        lp_decimals: 6,
+        stable_decimals: create_array(|i| if i < 4 { 6 } else { 8 }),
+        pool_balances: create_array(|i| initial_balances[i]),
+        user_funds: create_array(|i| user_add[i]),
+    };
+
+    let (mut solnode, pool, ..) = setup_standard_testcase(&params).await;
+
+    let new_lp_fee = DecT::new(6, 6).unwrap();
+    let new_governance_fee = DecT::new(2, 6).unwrap();
+    let gov_ix = GovernanceInstruction::PrepareFeeChange {
+        lp_fee: new_lp_fee,
+        governance_fee: new_governance_fee,
+    };
+    pool.execute_governance_instruction(gov_ix, None, &mut solnode)
+        .await
+        .unwrap();
+
+    let updated_state = pool.state(&mut solnode).await;
+    assert_eq!(updated_state.prepared_lp_fee.get(), new_lp_fee);
+    assert_eq!(updated_state.prepared_governance_fee.get(), new_governance_fee);
+}
+
+#[tokio::test]
+async fn test_prepare_governance_transition() {
+    let initial_balances: [AmountT; TOKEN_COUNT] =
+        [5_590_413, 6_341_331, 4_947_048, 3_226_825, 2_560_56724, 3_339_50641];
+
+    let user_add: [AmountT; TOKEN_COUNT] = [
+        10_000_000,
+        9_000_000,
+        11_000_000,
+        12_000_000,
+        13_000_00000,
+        12_000_00000,
+    ];
+
+    let params = Parameters {
+        amp_factor: DecT::new(1000, 0).unwrap(),
+        lp_fee: DecT::new(3, 6).unwrap(),
+        governance_fee: DecT::new(1, 6).unwrap(),
+        lp_decimals: 6,
+        stable_decimals: create_array(|i| if i < 4 { 6 } else { 8 }),
+        pool_balances: create_array(|i| initial_balances[i]),
+        user_funds: create_array(|i| user_add[i]),
+    };
+
+    let (mut solnode, pool, ..) = setup_standard_testcase(&params).await;
+
+    let new_gov_key = Keypair::new();
+    let gov_ix = GovernanceInstruction::PrepareGovernanceTransition {
+        upcoming_governance_key: new_gov_key.pubkey(),
+    };
+    pool.execute_governance_instruction(gov_ix, None, &mut solnode)
+        .await
+        .unwrap();
+
+    let updated_state = pool.state(&mut solnode).await;
+    assert_eq!(updated_state.prepared_governance_key, new_gov_key.pubkey());
+}
+
+#[tokio::test]
+async fn test_change_governance_fee_account() {
+    let initial_balances: [AmountT; TOKEN_COUNT] =
+        [5_590_413, 6_341_331, 4_947_048, 3_226_825, 2_560_56724, 3_339_50641];
+
+    let user_add: [AmountT; TOKEN_COUNT] = [
+        10_000_000,
+        9_000_000,
+        11_000_000,
+        12_000_000,
+        13_000_00000,
+        12_000_00000,
+    ];
+
+    let params = Parameters {
+        amp_factor: DecT::new(1000, 0).unwrap(),
+        lp_fee: DecT::new(3, 6).unwrap(),
+        governance_fee: DecT::new(1, 6).unwrap(),
+        lp_decimals: 6,
+        stable_decimals: create_array(|i| if i < 4 { 6 } else { 8 }),
+        pool_balances: create_array(|i| initial_balances[i]),
+        user_funds: create_array(|i| user_add[i]),
+    };
+
+    let (mut solnode, pool, ..) = setup_standard_testcase(&params).await;
+
+    let new_gov_fee_token_account = pool.create_lp_account(&mut solnode);
+
+    let gov_ix = GovernanceInstruction::ChangeGovernanceFeeAccount {
+        governance_fee_key: *new_gov_fee_token_account.pubkey(),
+    };
+    pool.execute_governance_instruction(gov_ix, Some(new_gov_fee_token_account.pubkey()), &mut solnode)
+        .await
+        .unwrap();
+
+    let updated_state = pool.state(&mut solnode).await;
+    assert_eq!(updated_state.governance_fee_key, *new_gov_fee_token_account.pubkey());
+}
+
+#[tokio::test]
+async fn test_adjust_amp_factor() {
+    let initial_balances: [AmountT; TOKEN_COUNT] =
+        [5_590_413, 6_341_331, 4_947_048, 3_226_825, 2_560_56724, 3_339_50641];
+
+    let user_add: [AmountT; TOKEN_COUNT] = [
+        10_000_000,
+        9_000_000,
+        11_000_000,
+        12_000_000,
+        13_000_00000,
+        12_000_00000,
+    ];
+
+    let params = Parameters {
+        amp_factor: DecT::new(1000, 0).unwrap(),
+        lp_fee: DecT::new(3, 6).unwrap(),
+        governance_fee: DecT::new(1, 6).unwrap(),
+        lp_decimals: 6,
+        stable_decimals: create_array(|i| if i < 4 { 6 } else { 8 }),
+        pool_balances: create_array(|i| initial_balances[i]),
+        user_funds: create_array(|i| user_add[i]),
+    };
+
+    let (mut solnode, pool, ..) = setup_standard_testcase(&params).await;
+
+    let new_gov_fee_token_account = pool.create_lp_account(&mut solnode);
+    let curr_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+    let target_ts = curr_ts + (10 * pool::amp_factor::MIN_ADJUSTMENT_WINDOW);
+    let target_value = DecT::new(1010, 0).unwrap();
+    let gov_ix = GovernanceInstruction::AdjustAmpFactor {
+        target_ts,
+        target_value,
+    };
+    pool.execute_governance_instruction(gov_ix, None, &mut solnode)
+        .await
+        .unwrap();
+
+    let updated_state = pool.state(&mut solnode).await;
+    assert_eq!(updated_state.amp_factor.get(target_ts + 100), target_value);
+}
+
+#[tokio::test]
+async fn test_pause() {
+    let initial_balances: [AmountT; TOKEN_COUNT] =
+        [5_590_413, 6_341_331, 4_947_048, 3_226_825, 2_560_56724, 3_339_50641];
+
+    let user_add: [AmountT; TOKEN_COUNT] = [
+        10_000_000,
+        9_000_000,
+        11_000_000,
+        12_000_000,
+        13_000_00000,
+        12_000_00000,
+    ];
+
+    let params = Parameters {
+        amp_factor: DecT::new(1000, 0).unwrap(),
+        lp_fee: DecT::new(3, 6).unwrap(),
+        governance_fee: DecT::new(1, 6).unwrap(),
+        lp_decimals: 6,
+        stable_decimals: create_array(|i| if i < 4 { 6 } else { 8 }),
+        pool_balances: create_array(|i| initial_balances[i]),
+        user_funds: create_array(|i| user_add[i]),
+    };
+
+    let (mut solnode, pool, user, _) = setup_standard_testcase(&params).await;
+
+    let gov_ix = GovernanceInstruction::SetPaused { paused: true };
+    pool.execute_governance_instruction(gov_ix, None, &mut solnode)
+        .await
+        .unwrap();
+
+    let updated_state = pool.state(&mut solnode).await;
+    assert!(updated_state.is_paused);
+
+    user.stable_approve(&params.user_funds, &mut solnode);
+    let defi_ix = DeFiInstruction::Add {
+        input_amounts: params.user_funds,
+        minimum_mint_amount: 0 as AmountT,
+    };
+
+    pool.execute_defi_instruction(defi_ix, &user.stables, Some(&user.lp), &mut solnode)
+        .await
+        .expect_err("Should not be able to execute defi_ix when paused");
+
+    let gov_ix = GovernanceInstruction::SetPaused { paused: false };
+
+    pool.execute_governance_instruction(gov_ix, None, &mut solnode)
+        .await
+        .unwrap();
+
+    let updated_state = pool.state(&mut solnode).await;
+    assert!(!updated_state.is_paused);
+
+    let defi_ix = DeFiInstruction::Add {
+        input_amounts: params.user_funds,
+        minimum_mint_amount: 0 as AmountT,
+    };
+
     pool.execute_defi_instruction(defi_ix, &user.stables, Some(&user.lp), &mut solnode)
         .await
         .unwrap();
