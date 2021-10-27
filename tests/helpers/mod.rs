@@ -330,6 +330,31 @@ impl DeployedPool {
         solnode.execute_transaction().await
     }
 
+    pub async fn execute_governance_instruction(
+        &self,
+        gov_instruction: GovernanceInstruction<TOKEN_COUNT>,
+        gov_fee_account: Option<&Pubkey>,
+        solnode: &mut SolanaNode,
+    ) -> Result<(), InstructionError> {
+        solnode
+            .execute_transaction()
+            .await
+            .expect("transaction failed unexpectedly");
+
+        solnode.push_instruction(
+            create_governance_ix(
+                gov_instruction,
+                &pool::id(),
+                &self.pool_keypair.pubkey(),
+                &self.governance_keypair.pubkey(),
+                gov_fee_account,
+            )
+            .unwrap(),
+        );
+        solnode.push_signer(&copy_keypair(&self.governance_keypair));
+        solnode.execute_transaction().await
+    }
+
     pub async fn balances(&self, solnode: &mut SolanaNode) -> [AmountT; TOKEN_COUNT] {
         //async closures are unstable...
         let mut balances = [0 as AmountT; TOKEN_COUNT];
