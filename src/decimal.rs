@@ -133,7 +133,6 @@ const fn create_bit_to_dec_array() -> [u8; BIT_TO_DEC_SIZE] {
     }
 }
 
-//TODO add another macro that allows using built-in u128 for .leading_zeros() of U128 to further reduce compute cost
 macro_rules! unsigned_decimal {
     (
     $name:ident,
@@ -248,7 +247,6 @@ macro_rules! unsigned_decimal {
                 ret
             }
 
-            //TODO banker's rounding?
             pub fn round(&self, decimals: u8) -> Self {
                 let mut ret = self.clone();
                 if decimals < ret.decimals {
@@ -377,7 +375,12 @@ macro_rules! unsigned_decimal {
 
                 let numerator = $upcast!(self.value, $larger_type);
                 let denominator = $upcast!(other.value, $larger_type);
-                let upshift = Self::get_unused_decimals(self.value) + Self::MAX_DECIMALS; //TODO might this be off by 1 in some cases?
+                //upshift might not shift all the way to the top but it's not a problem:
+                //for example: u32 has 9 max decimals while u64 has 19
+                //in this case, upshift can be at most 18 (decimals)
+                //however while we are not using the full range, since we only ultimately
+                //need 9 decimals the "wasted space" is not an issue
+                let upshift = Self::get_unused_decimals(self.value) + Self::MAX_DECIMALS;
                 let upshifted_num = numerator * Self::ten_to_the_larger_type(upshift);
                 let quotient = upshifted_num / denominator;
                 let decimals = self.decimals + upshift - other.decimals;
