@@ -359,9 +359,14 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
                 let user_lp_token_account = next_account_info(&mut account_info_iter)?;
                 let user_share = DecT::from(exact_burn_amount) / lp_total_supply;
-                //TODO HACKY
-                let latest_depth =
-                    (pool_state.previous_depth * ((user_share * 10u64.pow(17)).trunc() as u128)) / 10u128.pow(17);
+                //u64 can store 19 decimals, previous_depth can theoretically go up to TOKEN_COUNT * u64::MAX
+                //hence for just to be safe, we allow for previous depth to have up to 20 decimals
+                //therefore we can only multiply with a number with at most 18 decimals to stay within
+                //the 38 max decimals range of u128
+                const DECIMAL_UPSHIFT: u32 = 18;
+                let latest_depth = (pool_state.previous_depth
+                    * ((user_share * 10u64.pow(DECIMAL_UPSHIFT)).trunc() as u128))
+                    / 10u128.pow(DECIMAL_UPSHIFT);
 
                 for i in 0..TOKEN_COUNT {
                     let output_amount = (pool_balances[i] * user_share).trunc();
