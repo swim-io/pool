@@ -23,7 +23,7 @@ To deploy the pool program:
   ```bash
   solana program deploy --program-id <path_to_keypair> ./target/deploy/pool.so
   ```
-4. To adjust the number of constituent tokens for the Pool Program, adjust the `TOKEN_COUNT` const in `src/entrypoint.rs` then rebuild and deploy the program to a new program_id
+4. To adjust the number of constituent tokens for the Pool Program, adjust the `TOKEN_COUNT` const in `src/lib.rs` then rebuild and deploy the program to a new program_id
 
 ## Audits and Security
 Audit scheduled, starting ~Nov 1st 2021

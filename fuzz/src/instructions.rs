@@ -1,25 +1,21 @@
-use std::{collections::HashMap, convert::TryInto, str::FromStr};
+use std::collections::HashMap;
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use pool::error::*;
+use borsh::BorshDeserialize;
+
 use pool::instruction::*;
 use pool::TOKEN_COUNT;
-use pool::{decimal::*, instruction::*, invariant::*, processor::Processor, state::*};
+use pool::{decimal::*, processor::Processor, state::*};
 use solana_program::{
-    account_info::AccountInfo,
     instruction::{Instruction, InstructionError},
-    program_option::COption,
     program_pack::Pack,
     pubkey::Pubkey,
-    rent::Rent,
-    system_instruction, system_program,
-    sysvar::{self},
+    system_instruction,
 };
 use solana_program_test::*;
 use solana_sdk::{
     account::Account,
     hash::Hash,
-    signature::{read_keypair_file, Keypair, Signer},
+    signature::{Keypair, Signer},
     system_instruction::create_account,
     transaction::{Transaction, TransactionError},
     transport::TransportError,
@@ -30,19 +26,14 @@ use {
 };
 
 use arrayvec::ArrayVec;
-use spl_token::{
-    instruction::approve,
-    state::{Account as Token, AccountState, Mint},
-};
+use spl_token::state::{Account as Token, Mint};
 use std::collections::BTreeMap;
 
 use spl_associated_token_account::{create_associated_token_account, get_associated_token_address};
-use spl_token::instruction::{initialize_mint, mint_to};
 
 use rand::prelude::*;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 
 /// Use u8 as an account id to simplify the address space and re-use accounts
 /// more often.
@@ -737,8 +728,6 @@ async fn execute_fuzz_instruction<const TOKEN_COUNT: usize>(
         Err(ref error) => match error {
             TransportError::TransactionError(te) => {
                 match te {
-                    //[2021-10-06T08:34:26.892127400Z DEBUG solana_runtime::message_processor] Program 4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM consumed 200000 of 200000 compute units
-                    //[2021-10-06T08:34:26.893069000Z DEBUG solana_runtime::message_processor] Program failed to complete: exceeded maximum number of instructions allowed (200000) at instruction #11720
                     TransactionError::InstructionError(_, ie) => match ie {
                         InstructionError::InvalidArgument
                         | InstructionError::InsufficientFunds
@@ -748,8 +737,9 @@ async fn execute_fuzz_instruction<const TOKEN_COUNT: usize>(
                         => {
                             println!("[DEV] received expected InstructionError: {:?}. Fuzz_ix: {:?}", ie, fuzz_instruction);
                         }
-                        // Note - the instruction error is ProgramFailedToComplete for Compute Budget exceeded (not sure why not InstructionError::ComputationalBudgetExceeded)
-                        InstructionError::ProgramFailedToComplete => {
+                        // Note - Sometimes the instruction error is ProgramFailedToComplete for Compute Budget exceeded instead of InstructionError::ComputationalBudgetExceeded)
+                        InstructionError::ComputationalBudgetExceeded
+                        | InstructionError::ProgramFailedToComplete => {
                             println!("[DEV] Received ProgramFailedToComplete. PoolState: {:?}. Pool balances before ix: {:?}. fuzz_ix: {:?}", pool.get_pool_state(banks_client).await, pool_token_account_balances_before_ix, fuzz_instruction);
                             // Computation Budget expected for now until decimal/math optimization is done.
                             //Err(ie).unwrap()
@@ -805,11 +795,11 @@ async fn is_invalid_instruction_expected<const TOKEN_COUNT: usize>(
     match fuzz_instruction.instruction {
         DeFiInstruction::Add {
             input_amounts,
-            minimum_mint_amount,
+            minimum_mint_amount: _,
         } => input_amounts.iter().all(|amount| *amount == 0),
         DeFiInstruction::RemoveUniform {
             exact_burn_amount,
-            minimum_output_amounts,
+            minimum_output_amounts: _,
         } => {
             let lp_total_supply = get_mint_state(banks_client, &pool.lp_mint_keypair.pubkey())
                 .await
@@ -819,7 +809,7 @@ async fn is_invalid_instruction_expected<const TOKEN_COUNT: usize>(
         DeFiInstruction::SwapExactInput {
             exact_input_amounts,
             output_token_index,
-            minimum_output_amount,
+            minimum_output_amount: _,
         } => {
             let output_token_index = output_token_index as usize;
             exact_input_amounts.iter().all(|amount| *amount == 0)
@@ -827,7 +817,7 @@ async fn is_invalid_instruction_expected<const TOKEN_COUNT: usize>(
                 || exact_input_amounts[output_token_index] != 0
         }
         DeFiInstruction::SwapExactOutput {
-            maximum_input_amount,
+            maximum_input_amount: _,
             input_token_index,
             exact_output_amounts,
         } => {
@@ -844,7 +834,7 @@ async fn is_invalid_instruction_expected<const TOKEN_COUNT: usize>(
         DeFiInstruction::RemoveExactBurn {
             exact_burn_amount,
             output_token_index,
-            minimum_output_amount,
+            minimum_output_amount: _,
         } => {
             let output_token_index = output_token_index as usize;
             let lp_total_supply = get_mint_state(banks_client, &pool.lp_mint_keypair.pubkey())
@@ -1166,7 +1156,7 @@ pub async fn create_assoc_token_acct_and_mint(
     let ixs = vec![create_ix];
     let mut transaction = Transaction::new_with_payer(&ixs, Some(&correct_payer.pubkey()));
     transaction.sign(&[correct_payer], recent_blockhash);
-    let result = banks_client.process_transaction(transaction).await;
+    banks_client.process_transaction(transaction).await;
 
     let user_token_pubkey = get_associated_token_address(user_wallet_pubkey, token_mint);
     if amount > 0 {
