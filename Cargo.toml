@@ -4,9 +4,15 @@ version = "0.1.0"
 authors = ["z0ji <zoji@maelstrom.finance>"]
 edition = "2018"
 
+[workspace]
+members = [
+    "fuzz"
+]
+
 [features]
 no-entrypoint = []
 test-bpf = []
+fuzz = ["arbitrary", "roots"]
 
 [dependencies]
 #solana related dependencies
@@ -29,6 +35,11 @@ num-derive = "0.3"
 
 #misc
 arrayvec = "0.7.1"
+
+
+arbitrary = { version = "1.0.2", features = ["derive"], optional = true}
+honggfuzz = {version = "0.5.54", optional = true }
+roots = { version = "0.0.7", optional = true }
 
 [dev-dependencies]
 solana-program-test = "1.7.4"

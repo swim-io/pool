@@ -1,7 +1,5 @@
-use crate::{error::to_error_msg, processor::Processor};
+use crate::{error::to_error_msg, processor::Processor, TOKEN_COUNT};
 use solana_program::{account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, msg, pubkey::Pubkey};
-
-pub const TOKEN_COUNT: usize = 6; //TODO find a proper way to set/configure this
 
 entrypoint!(process_instruction);
 pub fn process_instruction<'a>(
@@ -15,7 +13,8 @@ pub fn process_instruction<'a>(
     //     accounts.len(),
     //     instruction_data
     // );
-    let result = Processor::<TOKEN_COUNT>::process(program_id, accounts, instruction_data);
+
+    let result = Processor::<{ TOKEN_COUNT }>::process(program_id, accounts, instruction_data);
     if let Err(error) = &result {
         msg!("process_instruction: failed: {}", to_error_msg(&error));
     }

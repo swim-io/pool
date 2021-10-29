@@ -1,0 +1,48 @@
+[package]
+name = "pool-fuzz"
+version = "0.1.0"
+description = "Pool Protocol Fuzzer"
+authors = ["rowdyear <rowdyear@maelstrom.finance>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+honggfuzz = { version = "0.5.54" }
+arbitrary = { version = "1.0.2", features = ["derive"] }
+
+#pool related dependencies
+pool = {path = "..", features = ["fuzz", "no-entrypoint"]}
+#solana related dependencies
+solana-program = "1.7.10"
+spl-token = { version = "3.1.1", features = ["no-entrypoint"] }
+solana-program-test = "1.7.14"
+solana-sdk = "1.7.4"
+spl-associated-token-account = { version = "1.0.2", features = ["no-entrypoint"] }
+
+
+#serializiation/deserialzation
+borsh = { version = "0.9.1", features = ["const-generics"] }
+borsh-derive = "0.9.1"
+
+#numerics
+uint = { version = "0.9.1", default-features = false }
+rust_decimal = {version = "1.15", features = [ "maths" ] }
+rust_decimal_macros = "1.15"
+
+#error handling
+thiserror = "1.0"
+num-traits = "0.2"
+num-derive = "0.3"
+
+#misc
+arrayvec = "0.7.1"
+
+tokio = { version = "1.0", features = ["macros"]}
+rand  = "0.8.4"
+rand_chacha = "0.3.1"
+
+[[bin]]
+name = "pool_fuzz"
+path = "src/instructions.rs"
+test = false
+doc = false

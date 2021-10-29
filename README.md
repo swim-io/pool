@@ -23,7 +23,7 @@ To deploy the pool program:
   ```bash
   solana program deploy --program-id <path_to_keypair> ./target/deploy/pool.so
   ```
-4. To adjust the number of constituent tokens for the Pool Program, adjust the `TOKEN_COUNT` const in `src/entrypoint.rs` then rebuild and deploy the program to a new program_id
+4. To adjust the number of constituent tokens for the Pool Program, adjust the `TOKEN_COUNT` const in `src/lib.rs` then rebuild and deploy the program to a new program_id
 
 ## Audits and Security
 Audit scheduled, starting ~Nov 1st 2021
@@ -45,5 +45,38 @@ cargo test-bpf -- --show-output --nocapture --test-threads=1 2>&1 | ./sol_spam_f
 cargo test-bpf -- --test test_pool_init --show-output
 ```
 
+# Fuzzing
+- workaround for honggfuzz macos x incompatability found [here](https://github.com/ilmoi/rebuild-token-vesting)
+  - TLDR: use docker 
+- docker run -it -v $(pwd):/app/ pool bash
+  - TLDR: use docker
+How to run fuzz tests on mac os x in docker container
+```sh
+# 1. build docker container (only have to do this one time)
+$ docker build -t pool .
+# 2. run docker container
+# $ docker run -it --security-opt seccomp=unrestricted -v $(pwd):/app/ pool bash 
+$ docker run -it --privileged -v $(pwd):/app/ pool bash 
+# should be in the docker container now
+$ cd fuzz
+$ BPF_OUT_DIR="/app/target/deploy" HFUZZ_RUN_ARGS="-t 100 -N 1000 -Q  " cargo hfuzz run pool_fuzz 
+# redirect output to files
+$ BPF_OUT_DIR="/app/target/deploy" HFUZZ_RUN_ARGS="-t 100 -N 500 -Q -d -v" cargo hfuzz run pool_fuzz > test_output.txt 2>&1
+# -t = timeout in seconds
+# -n = number of threads
+# -N = number of iterations
+# --exit_upon_crash
+
+# run fuzz debugger 
+# file for fuzz can be found in /app/fuzz/hfuzz_workspace/pool_fuzz/HONGGFUZZ.REPORT.TXT
+$ BPF_OUT_DIR="/app/target/deploy" cargo hfuzz run-debug pool_fuzz 'hfuzz_workspace/pool_fuzz/SIGABRT.PC.7f3088fedce1.STACK.19a84c71ce.CODE.-6.ADDR.0.INSTR.mov____0x108(%rsp),%rax.fuzz'
+``` 
+
+if you run into an error with something like this:
+"fatal error: ld terminated with signal 9"
+you need to go to Docker Desktop and increase the memory and swap then retry again
+
+
 ## Disclaimer
 Use at your own risk. Swim Protocol Foundation, and its representatives and agents disclaim all warranties, express or implied, related to the application you are accessing, and are not liable for any transactions you conduct thereon or losses that may result therefrom. US Persons are not permitted to access or use this application.
+

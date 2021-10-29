@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use borsh::BorshDeserialize;
-use pool::{common::*, decimal::*, entrypoint::TOKEN_COUNT, instruction::*, state::PoolState};
+use pool::{common::*, decimal::*, instruction::*, state::PoolState, TOKEN_COUNT};
 use solana_program::{program_pack::Pack, pubkey::Pubkey, rent::Rent};
 
 use solana_program_test::*;

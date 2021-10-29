@@ -7,6 +7,9 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
+#[cfg(feature = "fuzz")]
+use arbitrary::Arbitrary;
+
 type AmountT = u64;
 type DecT = DecimalU64;
 
@@ -73,6 +76,7 @@ pub fn create_init_ix<const TOKEN_COUNT: usize>(
     })
 }
 
+#[cfg_attr(feature = "fuzz", derive(Arbitrary))]
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub enum DeFiInstruction<const TOKEN_COUNT: usize> {
     /// Adds/Deposits the specified input_amounts and mints

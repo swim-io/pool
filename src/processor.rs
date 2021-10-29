@@ -211,7 +211,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
-        //msg!("[DEV] processing defi ix");
+        //msg!("[DEV] processing defi ix\n");
         let mut account_info_iter = accounts.iter();
         let pool_account = next_account_info(&mut account_info_iter)?;
         let mut pool_state = Self::check_and_deserialize_pool_state(pool_account, &program_id)?;
@@ -320,13 +320,24 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                     pool_state.lp_decimal_equalizer,
                 );
 
+                // msg!(
+                //     "[DEV] Add: {:?}, mint_amount: {:?}, governance_mint_amount: {:?}",
+                //     defi_instruction,
+                //     mint_amount,
+                //     governance_mint_amount
+                // );
+
                 if mint_amount < minimum_mint_amount {
+                    // msg!(
+                    //     "[DEV] Returning OutsideSpecifiedLimits for Add ix: {:?}",
+                    //     defi_instruction
+                    // );
                     return Err(PoolError::OutsideSpecifiedLimits.into());
                 }
 
                 for i in 0..TOKEN_COUNT {
                     if input_amounts[i] > 0 {
-                        //msg!("[DEV] transferring {} for i = {}", input_amounts[i], i);
+                        // msg!("[DEV] transferring {} for i = {}", input_amounts[i], i);
                         Self::transfer_token(
                             user_token_accounts[i],
                             pool_token_accounts[i],
@@ -623,7 +634,7 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         };
 
         if governance_mint_amount > 0 {
-            //msg!("[DEV] transferring {} as governance_fee", governance_mint_amount);
+            // msg!("[DEV] transferring {} as governance_fee", governance_mint_amount);
             Self::mint_token(
                 lp_mint_account,
                 governance_fee_account,
