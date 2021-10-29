@@ -465,6 +465,7 @@ async fn run_fuzz_instructions<const TOKEN_COUNT: usize>(
     fuzz_data: &FuzzData<TOKEN_COUNT>,
 ) {
     /** Prep/Initialize pool. TODO: Refactor this into separate method */
+    //TODO: Eventaually these should be fuzzed as well.
     let amp_factor = DecimalU64::from(1000);
     let lp_fee = DecimalU64::new(2000, 5).unwrap();
     let governance_fee = DecimalU64::new(1000, 5).unwrap();
