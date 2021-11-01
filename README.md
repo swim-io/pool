@@ -46,11 +46,11 @@ cargo test-bpf -- --test test_pool_init --show-output
 ```
 
 # Fuzzing
-- workaround for honggfuzz macos x incompatability found [here](https://github.com/ilmoi/rebuild-token-vesting)
-  - TLDR: use docker 
-- docker run -it -v $(pwd):/app/ pool bash
-  - TLDR: use docker
-How to run fuzz tests on mac os x in docker container
+The honggfuzz library is incompatable with macOS big sur and above (as of 11/01/2021). The workaround is to run the 
+fuzzing tests within a docker container and was based on the solution found [here](https://github.com/ilmoi/rebuild-token-vesting)
+
+
+## How to run fuzz tests on mac os x in docker container
 ```sh
 # 1. build docker container (only have to do this one time)
 $ docker build -t pool .
@@ -72,9 +72,11 @@ $ BPF_OUT_DIR="/app/target/deploy" HFUZZ_RUN_ARGS="-t 100 -N 500 -Q -d -v" cargo
 $ BPF_OUT_DIR="/app/target/deploy" cargo hfuzz run-debug pool_fuzz 'hfuzz_workspace/pool_fuzz/SIGABRT.PC.7f3088fedce1.STACK.19a84c71ce.CODE.-6.ADDR.0.INSTR.mov____0x108(%rsp),%rax.fuzz'
 ``` 
 
-if you run into an error with something like this:
+## Troubleshooting
+If you encounter the following error during the `docker build` or `docker run` stage, in Docker Desktop go to "Preferences" -> "Resources" and increase the memory and swap then retry again:
+
 "fatal error: ld terminated with signal 9"
-you need to go to Docker Desktop and increase the memory and swap then retry again
+
 
 
 ## Disclaimer
