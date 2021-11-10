@@ -36,6 +36,10 @@ impl U128 {
         ret[1] = (value >> 64) as u64;
         Self(ret)
     }
+
+    pub const fn ten_to_the(exp: u8) -> Self {
+        Self::const_from(TEN_TO_THE[exp as usize])
+    }
 }
 
 construct_uint! {

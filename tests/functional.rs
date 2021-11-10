@@ -241,8 +241,11 @@ async fn test_pool_remove_uniform() {
 
 #[tokio::test]
 async fn test_expensive_add() {
+    let scale_factor = (10 as AmountT).pow(9);
     let initial_balances: [AmountT; TOKEN_COUNT] =
         [5_590_413, 6_341_331, 4_947_048, 3_226_825, 2_560_56724, 3_339_50641];
+
+    let initial_balances: [_; TOKEN_COUNT] = create_array(|i| initial_balances[i] * scale_factor);
 
     let user_add: [AmountT; TOKEN_COUNT] = [
         10_000_000,
@@ -252,6 +255,8 @@ async fn test_expensive_add() {
         13_000_00000,
         12_000_00000,
     ];
+
+    let user_add: [_; TOKEN_COUNT] = create_array(|i| user_add[i] * scale_factor);
 
     let params = Parameters {
         amp_factor: DecT::new(1000, 0).unwrap(),
@@ -270,9 +275,11 @@ async fn test_expensive_add() {
         input_amounts: params.user_funds,
         minimum_mint_amount: 0 as AmountT,
     };
+    println!("> user balance before: {:?}", user.stable_balances(&mut solnode).await);
     pool.execute_defi_instruction(defi_ix, &user.stables, Some(&user.lp), &mut solnode)
         .await
         .unwrap();
+    println!(">       user lp after: {:?}", user.lp.balance(&mut solnode).await);
 }
 
 // #[tokio::test]

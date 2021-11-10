@@ -1,3 +1,5 @@
+use std::cmp::{max, min};
+
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::UnixTimestamp,
@@ -125,26 +127,17 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
         let token_accounts: [_; TOKEN_COUNT] = create_result_array(|_| check_duplicate_and_get_next())?;
         //msg!("[DEV] token_accounts.len: {}", token_accounts.len());
 
-        struct MinMax {
-            min: u8,
-            max: u8,
-        }
-        let mut decimal_range = MinMax {
-            min: lp_mint_state.decimals,
-            max: lp_mint_state.decimals,
-        };
+        let mut decimal_range_min = lp_mint_state.decimals;
+        let mut decimal_range_max = decimal_range_min;
         //msg!("[DEV] passed lp_mint_account checks");
         let token_decimals: [_; TOKEN_COUNT] = create_result_array(|i| -> Result<_, ProgramError> {
             let mint_decimals = Self::check_program_owner_and_unpack::<MintState>(token_mint_accounts[i])?.decimals;
-            if decimal_range.min > mint_decimals {
-                decimal_range.min = mint_decimals;
-            } else if decimal_range.max < mint_decimals {
-                decimal_range.max = mint_decimals;
-            }
+            decimal_range_min = min(decimal_range_min, mint_decimals);
+            decimal_range_max = max(decimal_range_max, mint_decimals);
             Ok(mint_decimals)
         })?;
 
-        if decimal_range.max - decimal_range.min > MAX_DECIMAL_DIFFERENCE {
+        if decimal_range_max - decimal_range_min > MAX_DECIMAL_DIFFERENCE {
             return Err(PoolError::MaxDecimalDifferenceExceeded.into());
         }
 
@@ -189,9 +182,9 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
                 lp_fee: PoolFee::new(lp_fee)?,
                 governance_fee: PoolFee::new(governance_fee)?,
                 lp_mint_key: lp_mint_account.key.clone(),
-                lp_decimal_equalizer: decimal_range.max - lp_mint_state.decimals,
+                lp_decimal_equalizer: decimal_range_max - lp_mint_state.decimals,
                 token_mint_keys: create_array(|i| token_mint_accounts[i].key.clone()),
-                token_decimal_equalizers: create_array(|i| decimal_range.max - token_decimals[i]),
+                token_decimal_equalizers: create_array(|i| decimal_range_max - token_decimals[i]),
                 token_keys: create_array(|i| token_accounts[i].key.clone()),
                 governance_key: governance_account.key.clone(),
                 governance_fee_key: governance_fee_account.key.clone(),
@@ -264,15 +257,14 @@ impl<const TOKEN_COUNT: usize> Processor<TOKEN_COUNT> {
 
         let to_equalized = |value, equalizer| {
             if equalizer > 0 {
-                AmountT::from(value) * 10u64.pow(equalizer as u32)
+                AmountT::from(value) * AmountT::ten_to_the(equalizer)
             } else {
                 AmountT::from(value)
             }
         };
         let from_equalized = |value: AmountT, equalizer| {
             if equalizer > 0 {
-                let pot = 10u128.pow((equalizer - 1) as u32);
-                ((value.as_u128() + 5 * pot) / (pot * 10)) as u64
+                ((value + AmountT::ten_to_the(equalizer - 1) * 5u64) / AmountT::ten_to_the(equalizer)).as_u64()
             } else {
                 value.as_u64()
             }
