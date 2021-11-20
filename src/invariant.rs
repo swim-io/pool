@@ -670,7 +670,7 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         let depth = U192::from(depth.to_u128().unwrap());
         let mut previous_unknown_balance = U192::from(0);
         let mut unknown_balance = if initial_guess.is_zero() {
-            depth
+            depth / 2
         } else {
             U192::from(initial_guess.as_u128())
         };
