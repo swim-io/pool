@@ -328,9 +328,9 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
             initial_depth,
             amp_factor,
             if is_exact_input {
-                pool_balances[index]
+                pool_balances[index] //safe because we know the unknown balance has to be smaller than the original balance
             } else {
-                AmountT::zero()
+                AmountT::zero() //use default inital guess
             },
         )?;
         // println!("SWAP     unknown_balance: {}", unknown_balance);
@@ -493,6 +493,7 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
             initial_depth * (Decimal::from(lp_total_supply - burn_amount) / Decimal::from(lp_total_supply));
         debug_assert!(initial_depth > updated_depth);
         let known_balances = exclude_index(output_index, &pool_balances);
+        //we can pass the original pool balance as an initial guess because we know that the unknown balance has to be smaller
         let unknown_balance =
             Self::calculate_unknown_balance(&known_balances, updated_depth, amp_factor, pool_balances[output_index])?;
         let base_amount = pool_balances[output_index] - unknown_balance;
@@ -633,7 +634,7 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         let known_balance_sum = known_balances
             .iter()
             .fold(U128::from(0), |acc, &known_balance| acc + known_balance);
-        let reciprocal_decay = known_balances.iter().fold(Decimal::one(), |acc, &known_balance| {
+        let partial_reciprocal_decay = known_balances.iter().fold(Decimal::one(), |acc, &known_balance| {
             acc * (depth / Decimal::from(known_balance * n))
         });
 
@@ -641,15 +642,29 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         // println!(". known_balance_sum: {}", known_balance_sum);
         // println!(".  reciprocal_decay: {}", reciprocal_decay);
 
-        let numerator_fixed = if reciprocal_decay < Decimal::from(u32::MAX) {
+        //The following numerator_fixed calculation has to deal with two different cases:
+        //1) partial_reciprocal_decay is small (potentially even smaller than 1 and hence a
+        //   a cast to u128 would lose all significant digits! (This happens when
+        //   the known balances are large in comparison to the unknown balance))
+        //or
+        //2) partial_reciprocal_decay is very large (the opposite case, when unknown balance
+        //   is comparatively small)
+        //
+        //Thus, since rust_decimal has 96 bits of precision, it is safe to multiply by
+        //depth/TOKEN_COUNT (necessarily less than 64 bits) as long as partial_reciprocial_decay
+        //is sufficiently small itself, i.e. less than 32 bits (if branch)
+        //
+        //Otherwise we can simply convert partial_reciprocal_decay to u128 without losing any
+        //critical digits and take it from there. (else branch)
+        let numerator_fixed = if partial_reciprocal_decay < Decimal::from(u32::MAX) {
             (U192::from(
-                (reciprocal_decay * (depth / Decimal::from(TOKEN_COUNT)))
+                (partial_reciprocal_decay * (depth / Decimal::from(TOKEN_COUNT)))
                     .to_u128()
                     .unwrap(),
             ) * U192::from((depth / amp_factor * Decimal::from(u32::MAX)).to_u128().unwrap()))
                 / U192::from(u32::MAX)
         } else {
-            (((U192::from(reciprocal_decay.to_u128().unwrap())
+            (((U192::from(partial_reciprocal_decay.to_u128().unwrap())
                 * U192::from((depth / Decimal::from(TOKEN_COUNT)).to_u128().unwrap()))
                 * U192::from(depth.to_u128().unwrap()))
                 / U192::from((amp_factor * Decimal::from(u32::MAX)).to_u128().unwrap()))
@@ -657,8 +672,6 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         };
 
         // println!(".   numerator_fixed: {}", numerator_fixed);
-
-        //U192::from((reciprocal_decay*(depth/Decimal::from(n))).to_u128().unwrap()) * U192::from(depth.to_u128().unwrap()) /
 
         //can't sub depth from denominator_fixed because overall result could turn negative
         let denominator_fixed = U192::from(
@@ -669,6 +682,9 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         // println!(". denominator_fixed: {}", denominator_fixed);
         let depth = U192::from(depth.to_u128().unwrap());
         let mut previous_unknown_balance = U192::from(0);
+
+        //the initial guess always has to be larger than or equal to the true value to avoid
+        //negative values in the denominator
         let mut unknown_balance = if initial_guess.is_zero() {
             depth / 2
         } else {
