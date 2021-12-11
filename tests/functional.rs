@@ -225,18 +225,61 @@ async fn test_pool_remove_uniform() {
     let (mut solnode, pool, _, lp_collective) = setup_standard_testcase(&params).await;
 
     let lp_total_supply = lp_collective.lp.balance(&mut solnode).await;
-    lp_collective.lp.approve(lp_total_supply, &mut solnode);
-    let defi_ix = DeFiInstruction::RemoveUniform {
-        exact_burn_amount: lp_total_supply,
-        minimum_output_amounts: params.pool_balances,
-    };
-    pool.execute_defi_instruction(defi_ix, &lp_collective.stables, Some(&lp_collective.lp), &mut solnode)
-        .await
-        .unwrap();
+    let original_depth = (pool.state(&mut solnode).await).previous_depth;
+    let original_balances = pool.balances(&mut solnode).await;
 
-    assert_eq!(lp_collective.stable_balances(&mut solnode).await, params.pool_balances);
-    assert_eq!(lp_collective.lp.balance(&mut solnode).await, 0);
-    assert_eq!(pool.balances(&mut solnode).await, [0; TOKEN_COUNT]);
+    {
+        println!("> removeUniform(one quarter of lp supply)");
+        lp_collective.lp.approve(lp_total_supply / 4, &mut solnode);
+        let defi_ix = DeFiInstruction::RemoveUniform {
+            exact_burn_amount: lp_total_supply / 4,
+            minimum_output_amounts: create_array(|i| params.pool_balances[i] / 4),
+        };
+        pool.execute_defi_instruction(defi_ix, &lp_collective.stables, Some(&lp_collective.lp), &mut solnode)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            lp_collective.stable_balances(&mut solnode).await,
+            create_array(|i| params.pool_balances[i] / 4)
+        );
+        assert_eq!(lp_collective.lp.balance(&mut solnode).await, (lp_total_supply / 4) * 3);
+        assert_eq!(
+            pool.balances(&mut solnode).await,
+            create_array(|i| (original_balances[i] / 4) * 3)
+        );
+        assert_eq!(
+            (pool.state(&mut solnode).await).previous_depth,
+            (original_depth / 4) * 3
+        );
+    }
+
+    {
+        println!("> setting pool to paused (subsequent removeUniform has to work regardless!)");
+        let gov_ix = GovernanceInstruction::SetPaused { paused: true };
+        pool.execute_governance_instruction(gov_ix, None, &mut solnode)
+            .await
+            .unwrap();
+
+        assert!(pool.state(&mut solnode).await.is_paused);
+    }
+
+    {
+        println!("> removeUniform(remaining three quarters of lp supply)");
+        lp_collective.lp.approve((lp_total_supply / 4) * 3, &mut solnode);
+        let defi_ix = DeFiInstruction::RemoveUniform {
+            exact_burn_amount: (lp_total_supply / 4) * 3,
+            minimum_output_amounts: create_array(|i| (params.pool_balances[i] / 4) * 3),
+        };
+        pool.execute_defi_instruction(defi_ix, &lp_collective.stables, Some(&lp_collective.lp), &mut solnode)
+            .await
+            .unwrap();
+
+        assert_eq!(lp_collective.stable_balances(&mut solnode).await, original_balances);
+        assert_eq!(lp_collective.lp.balance(&mut solnode).await, 0);
+        assert_eq!(pool.balances(&mut solnode).await, [0; TOKEN_COUNT]);
+        assert_eq!(pool.state(&mut solnode).await.previous_depth, 0u128);
+    }
 }
 
 #[tokio::test]
