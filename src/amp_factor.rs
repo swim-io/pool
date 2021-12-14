@@ -1,4 +1,6 @@
-use crate::{decimal::DecimalError, decimal::DecimalU64, error::PoolError};
+use std::ops::{Add, Sub};
+
+use crate::{decimal::DecimalU64, error::PoolError};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::clock::UnixTimestamp;
 
@@ -6,11 +8,11 @@ pub type TimestampT = UnixTimestamp;
 pub type ValueT = DecimalU64;
 
 //result.unwrap() is not a const function...
-pub const MIN_AMP_VALUE: ValueT = DecimalU64::const_from(1);
-pub const MAX_AMP_VALUE: ValueT = DecimalU64::const_from(10u64.pow(6));
+pub const MIN_AMP_VALUE: ValueT = ValueT::const_from(1);
+pub const MAX_AMP_VALUE: ValueT = ValueT::const_from(10u64.pow(6));
 
 pub const MIN_ADJUSTMENT_WINDOW: TimestampT = 60 * 60 * 24;
-pub const MAX_RELATIVE_ADJUSTMENT: Result<ValueT, DecimalError> = DecimalU64::new(10, 0);
+pub const MAX_RELATIVE_ADJUSTMENT: ValueT = ValueT::const_from(10);
 
 #[derive(BorshSerialize, BorshDeserialize, BorshSchema, Debug)]
 pub struct AmpFactor {
@@ -66,12 +68,17 @@ impl AmpFactor {
             // the maximum _relative_ change to a factor of 10 (i.e. amp_factor at most do
             // a 10x over a day (not +10, but potentially much more))
 
-            let value_diff = self.target_value - self.initial_value;
-            let time_since_initial = DecimalU64::new((current_ts - self.initial_ts) as u64, 0).unwrap();
-            let total_adjustment_time = DecimalU64::new((self.target_ts - self.initial_ts) as u64, 0).unwrap();
+            let is_increase = self.target_value > self.initial_value;
+            let value_diff = if is_increase {
+                self.target_value - self.initial_value
+            } else {
+                self.initial_value - self.target_value
+            };
+            let time_since_initial: DecimalU64 = ((current_ts - self.initial_ts) as u64).into();
+            let total_adjustment_time: DecimalU64 = ((self.target_ts - self.initial_ts) as u64).into();
             let delta = value_diff * (time_since_initial / total_adjustment_time);
 
-            self.initial_value + delta
+            (if is_increase { ValueT::add } else { ValueT::sub }(self.initial_value, delta))
         }
     }
 
@@ -90,8 +97,8 @@ impl AmpFactor {
         }
 
         let initial_value = self.get(current_ts);
-        if (initial_value < target_value && initial_value * MAX_RELATIVE_ADJUSTMENT.unwrap() < target_value)
-            || (initial_value > target_value && initial_value > target_value * MAX_RELATIVE_ADJUSTMENT.unwrap())
+        if (initial_value < target_value && initial_value * MAX_RELATIVE_ADJUSTMENT < target_value)
+            || (initial_value > target_value && initial_value > target_value * MAX_RELATIVE_ADJUSTMENT)
         {
             return Err(PoolError::InvalidAmpFactorValue);
         }
@@ -109,13 +116,13 @@ impl AmpFactor {
 mod tests {
     use super::*;
 
-    fn new_u64(value: u64, decimals: u8) -> DecimalU64 {
-        DecimalU64::new(value, decimals).unwrap()
+    fn new_u64(value: u64, decimals: u8) -> ValueT {
+        ValueT::new(value, decimals).unwrap()
     }
 
     #[test]
     fn new_amp_factor() {
-        assert!(AmpFactor::new(DecimalU64::from(0)).is_err());
+        assert!(AmpFactor::new(ValueT::from(0)).is_err());
         assert!(AmpFactor::new(MIN_AMP_VALUE - 1).is_err());
         assert!(AmpFactor::new(MAX_AMP_VALUE + 1).is_err());
 
@@ -127,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn valid_set_target() {
+    fn valid_set_target_upward() {
         let mut amp = AmpFactor::new(new_u64(10000, 0)).unwrap();
         assert_eq!(amp.get(1), 10000);
 
@@ -139,6 +146,21 @@ mod tests {
         assert_eq!(amp.get(70000), new_u64(15787037037037037037, 15));
         assert_eq!(amp.get(90000), new_u64(18101851851851851851, 15));
         assert_eq!(amp.get(106400), 20000);
+    }
+
+    #[test]
+    fn valid_set_target_downward() {
+        let mut amp = AmpFactor::new(new_u64(20000, 0)).unwrap();
+        assert_eq!(amp.get(1), 20000);
+
+        amp.set_target(20000, new_u64(10000, 0), 106400).unwrap();
+
+        assert_eq!(amp.get(20000), 20000);
+        assert_eq!(amp.get(36400), new_u64(18101851851851851852, 15));
+        assert_eq!(amp.get(56400), new_u64(15787037037037037038, 15));
+        assert_eq!(amp.get(76400), new_u64(13472222222222222223, 15));
+        assert_eq!(amp.get(96400), new_u64(11157407407407407408, 15));
+        assert_eq!(amp.get(106400), 10000);
     }
 
     #[test]
