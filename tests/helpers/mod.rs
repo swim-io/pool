@@ -364,6 +364,10 @@ impl DeployedPool {
         balances
     }
 
+    pub async fn governance_lp_balance(&self, solnode: &mut SolanaNode) -> AmountT {
+        TokenAccount::get_balance(&self.governance_fee_account, solnode).await
+    }
+
     pub async fn state(&self, solnode: &mut SolanaNode) -> PoolState<TOKEN_COUNT> {
         let pool_account = solnode.get_account_state(&self.pool_keypair.pubkey()).await;
         PoolState::<TOKEN_COUNT>::deserialize(&mut pool_account.data.as_slice()).unwrap()

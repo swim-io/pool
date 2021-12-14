@@ -74,11 +74,11 @@ impl AmpFactor {
             } else {
                 self.initial_value - self.target_value
             };
-            let time_since_initial: DecimalU64 = ((current_ts - self.initial_ts) as u64).into();
-            let total_adjustment_time: DecimalU64 = ((self.target_ts - self.initial_ts) as u64).into();
+            let time_since_initial: ValueT = ((current_ts - self.initial_ts) as u64).into();
+            let total_adjustment_time: ValueT = ((self.target_ts - self.initial_ts) as u64).into();
             let delta = value_diff * (time_since_initial / total_adjustment_time);
 
-            (if is_increase { ValueT::add } else { ValueT::sub }(self.initial_value, delta))
+            (if is_increase { ValueT::add } else { ValueT::sub })(self.initial_value, delta)
         }
     }
 
@@ -150,10 +150,10 @@ mod tests {
 
     #[test]
     fn valid_set_target_downward() {
-        let mut amp = AmpFactor::new(new_u64(20000, 0)).unwrap();
+        let mut amp = AmpFactor::new(ValueT::from(20000)).unwrap();
         assert_eq!(amp.get(1), 20000);
 
-        amp.set_target(20000, new_u64(10000, 0), 106400).unwrap();
+        amp.set_target(20000, ValueT::from(10000), 106400).unwrap();
 
         assert_eq!(amp.get(20000), 20000);
         assert_eq!(amp.get(36400), new_u64(18101851851851851852, 15));
@@ -167,14 +167,14 @@ mod tests {
     #[should_panic]
     fn invalid_set_target() {
         //Target value set to 20x initial value
-        let mut amp = AmpFactor::new(new_u64(1000, 0)).unwrap();
-        amp.set_target(20000, new_u64(20000, 0), 106400).unwrap();
+        let mut amp = AmpFactor::new(ValueT::from(1000)).unwrap();
+        amp.set_target(20000, ValueT::from(20000), 106400).unwrap();
     }
 
     #[test]
     #[should_panic]
     fn invalid_adjustment_window() {
-        let mut amp = AmpFactor::new(new_u64(10000, 0)).unwrap();
-        amp.set_target(20000, new_u64(20000, 0), 50000).unwrap();
+        let mut amp = AmpFactor::new(ValueT::from(10000)).unwrap();
+        amp.set_target(20000, ValueT::from(20000), 50000).unwrap();
     }
 }

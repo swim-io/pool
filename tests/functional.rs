@@ -3,7 +3,7 @@
 mod helpers;
 
 use helpers::*;
-use pool::{common::*, instruction::*, pool_fee::*, TOKEN_COUNT};
+use pool::{common::*, instruction::*, TOKEN_COUNT};
 use solana_program_test::*;
 use solana_sdk::signature::{Keypair, Signer};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -185,7 +185,7 @@ async fn test_pool_swap_exact_output() {
     let mut exact_output_amounts = create_array(|i| i as u64 * params.user_funds[i] / 100);
     exact_output_amounts[0] = 0;
 
-    let mut approve_amounts = create_array(|i| if i == 0 { u64::MAX } else { 0 });
+    let approve_amounts = create_array(|i| if i == 0 { u64::MAX } else { 0 });
 
     user.stable_approve(&approve_amounts, &mut solnode);
     let defi_ix = DeFiInstruction::SwapExactOutput {
@@ -650,7 +650,6 @@ async fn test_adjust_amp_factor() {
 
     let (mut solnode, pool, ..) = setup_standard_testcase(&params).await;
 
-    let new_gov_fee_token_account = pool.create_lp_account(&mut solnode);
     let curr_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
     let target_ts = curr_ts + (10 * pool::amp_factor::MIN_ADJUSTMENT_WINDOW);
     let target_value = DecT::new(1010, 0).unwrap();
@@ -696,34 +695,27 @@ async fn test_pause() {
     pool.execute_governance_instruction(gov_ix, None, &mut solnode)
         .await
         .unwrap();
-
-    let updated_state = pool.state(&mut solnode).await;
-    assert!(updated_state.is_paused);
+    assert!(pool.state(&mut solnode).await.is_paused);
 
     user.stable_approve(&params.user_funds, &mut solnode);
     let defi_ix = DeFiInstruction::Add {
         input_amounts: params.user_funds,
         minimum_mint_amount: 0 as AmountT,
     };
-
     pool.execute_defi_instruction(defi_ix, &user.stables, Some(&user.lp), &mut solnode)
         .await
         .expect_err("Should not be able to execute defi_ix when paused");
 
     let gov_ix = GovernanceInstruction::SetPaused { paused: false };
-
     pool.execute_governance_instruction(gov_ix, None, &mut solnode)
         .await
         .unwrap();
-
-    let updated_state = pool.state(&mut solnode).await;
-    assert!(!updated_state.is_paused);
+    assert!(!pool.state(&mut solnode).await.is_paused);
 
     let defi_ix = DeFiInstruction::Add {
         input_amounts: params.user_funds,
         minimum_mint_amount: 0 as AmountT,
     };
-
     pool.execute_defi_instruction(defi_ix, &user.stables, Some(&user.lp), &mut solnode)
         .await
         .unwrap();

@@ -33,7 +33,9 @@ pub const fn ten_to_the(exp: u8) -> AmountT {
 }
 
 fn fast_round(decimal: Decimal) -> AmountT {
-    //TODO no rounding to preserve compute budget for now
+    //TODO no rounding to preserve compute budget for now (saves about 7k compute units)
+    //     when removing this TODO also restore the precision back down to 1 at the
+    //     TODO ROUNDING tag in the tests
 
     // const ONE_HALF: Decimal = Decimal::from_parts(5, 0, 0, false, 1);
     // AmountT::from((decimal + ONE_HALF).trunc().to_u128().unwrap())
@@ -304,7 +306,6 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         previous_depth: AmountT,
     ) -> InvariantResult<(AmountT, AmountT, AmountT)> {
         debug_assert!(amounts[index].is_zero());
-        // println!("SWAP SWAP SWAP SWAP SWAP SWAP SWAP SWAP SWAP SWAP SWAP SWAP SWAP SWAP");
         let initial_depth = Self::calculate_depth(pool_balances, amp_factor, previous_depth.into())?;
         // println!("SWAP       initial_depth: {}", initial_depth);
         let mut updated_balances = binary_op_balances(
@@ -322,7 +323,7 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
 
         // println!("SWAP  swap_base_balances: {:?}", swap_base_balances);
         let known_balances = exclude_index(index, swap_base_balances);
-        // println!("known_balances: {:?}", known_balances);
+        // println!("SWAP      known_balances: {:?}", known_balances);
         let unknown_balance = Self::calculate_unknown_balance(
             &known_balances,
             initial_depth,
@@ -342,16 +343,12 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
             intermediate_amount
         };
         // println!("SWAP        final_amount: {}", final_amount);
-
         updated_balances[index] =
             if is_exact_input { AmountT::sub } else { AmountT::add }(updated_balances[index], final_amount);
-
         // println!("SWAP    updated_balances: {:?}", updated_balances);
-
         let (governance_mint_amount, final_depth) = if !total_fee.is_zero() {
             let final_depth = Self::calculate_depth(&updated_balances, amp_factor, initial_depth)?;
             // println!("SWAP         final_depth: {}", final_depth);
-
             let total_fee_depth = final_depth - initial_depth;
             // println!("SWAP     total_fee_depth: {}", total_fee_depth);
             let governance_depth = (total_fee_depth * governance_fee) / total_fee;
@@ -378,9 +375,7 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         lp_total_supply: AmountT,
         previous_depth: AmountT,
     ) -> InvariantResult<(AmountT, AmountT, AmountT)> {
-        //solana_program::msg!("ADD/REMOVE 1");
         let initial_depth = Self::calculate_depth(pool_balances, amp_factor, previous_depth.into())?;
-        //solana_program::msg!("ADD/REMOVE 2");
         let updated_balances = binary_op_balances(
             if is_add { AmountT::add } else { AmountT::sub },
             &pool_balances,
@@ -388,14 +383,12 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
         );
         let sum_updated_balances = sum_balances(&updated_balances);
         let sum_pool_balances = sum_balances(pool_balances);
-        //solana_program::msg!("ADD/REMOVE 3");
         let updated_depth = Self::calculate_depth(
             &updated_balances,
             amp_factor,
             Decimal::from(initial_depth.to_u128().unwrap())
                 * (Decimal::from(sum_updated_balances) / Decimal::from(sum_pool_balances)),
         )?;
-        //solana_program::msg!("ADD/REMOVE 4");
         let (lp_amount, governance_mint_amount) = if !total_fee.is_zero() {
             let scaled_balances = unary_op_balances(
                 |balance| {
@@ -454,11 +447,12 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
             let lp_amount = fast_round(Decimal::from(lp_total_supply) * (user_depth / initial_depth));
             let governance_depth = total_fee_depth * (governance_fee / total_fee);
             // solana_program::msg!("            is_add: {}", is_add);
+            // solana_program::msg!("   total_fee_depth: {}", total_fee_depth);
             // solana_program::msg!("  governance_depth: {}", governance_depth);
             // solana_program::msg!("     updated_depth: {}", updated_depth);
             // solana_program::msg!("fee_adjusted_depth: {}", fee_adjusted_depth);
-            // solana_program::msg!("   lp_total_supply: {}", fee_adjusted_depth);
-            // solana_program::msg!("         lp_amount: {}", fee_adjusted_depth);
+            // solana_program::msg!("   lp_total_supply: {}", lp_total_supply);
+            // solana_program::msg!("         lp_amount: {}", lp_amount);
             let governance_mint_amount = fast_round(
                 governance_depth
                     * (Decimal::from(if is_add { AmountT::add } else { AmountT::sub }(
@@ -510,6 +504,11 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
             updated_balances[output_index] -= output_amount;
             let total_fee_depth = Self::calculate_depth(&updated_balances, amp_factor, updated_depth)? - updated_depth;
             let governance_depth = total_fee_depth * (governance_fee / total_fee);
+            // solana_program::msg!("   total_fee_depth: {}", total_fee_depth);
+            // solana_program::msg!("  governance_depth: {}", governance_depth);
+            // solana_program::msg!("     updated_depth: {}", updated_depth);
+            // solana_program::msg!("   lp_total_supply: {}", lp_total_supply);
+            // solana_program::msg!("       burn_amount: {}", burn_amount);
             let governance_mint_amount = fast_round(
                 governance_depth * (Decimal::from(lp_total_supply - burn_amount) / (updated_depth - governance_depth)),
             );
@@ -581,7 +580,8 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
                 if depth.abs_diff(previous_depth) <= 0.5f64 {
                     return Ok(Decimal::from(depth as u128));
                 }
-                if depth.to_bits().abs_diff(previous_depth.to_bits()) <= 2 {
+                //AbsDiff::abs_diff(. , .) syntax to get rid of compiler warning
+                if AbsDiff::abs_diff(depth.to_bits(), previous_depth.to_bits()) <= 2 {
                     break;
                 }
                 previous_depth = depth;
@@ -680,6 +680,7 @@ impl<const TOKEN_COUNT: usize> Invariant<TOKEN_COUNT> {
                 .unwrap(),
         );
         // println!(". denominator_fixed: {}", denominator_fixed);
+
         let depth = U192::from(depth.to_u128().unwrap());
         let mut previous_unknown_balance = U192::from(0);
 
@@ -847,9 +848,12 @@ mod tests {
         .unwrap();
         // println!(">>> removing {} coins (of one type) requires {} lp tokens", output[0], lp_required);
         // println!(">>> burning {} lp tokens netted {} coins (of one type)", lp_required, amount_received);
+        // println!(">>> exact output governance_fee: {}", gov_fee_token_remove);
+        // println!(">>> exact  burn  governance_fee: {}", gov_fee_lp_burn);
 
         assert_close_enough(output[0], amount_received, 1.into());
-        assert_close_enough(gov_fee_token_remove, gov_fee_lp_burn, 1.into());
+        //TODO ROUNDING the 3 here is a function of fast_round not actually rounding but cutting off atm
+        assert_close_enough(gov_fee_token_remove, gov_fee_lp_burn, 3.into());
     }
 
     #[test]

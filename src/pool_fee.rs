@@ -7,20 +7,21 @@ use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 const DECIMALS: u8 = 6;
 //10^(DECIMALS+2) has to fit into ValueT
 pub type ValueT = u32;
+type DecT = DecimalU64;
 
 #[derive(BorshSerialize, BorshDeserialize, BorshSchema, Debug, Default)]
 pub struct PoolFee(ValueT);
 
 impl PoolFee {
-    pub fn new(fee: DecimalU64) -> Result<Self, PoolError> {
+    pub fn new(fee: DecT) -> Result<Self, PoolError> {
         let mut ret = Self::default();
         ret.set(fee)?;
         Ok(ret)
     }
 
-    pub fn set(&mut self, fee: DecimalU64) -> Result<(), PoolError> {
+    pub fn set(&mut self, fee: DecT) -> Result<(), PoolError> {
         let floored_fee = fee.floor(DECIMALS);
-        if fee >= DecimalU64::from(1) || floored_fee != fee {
+        if fee >= DecT::from(1) || floored_fee != fee {
             //fee has to be less than 100 % and decimals have to fit
             return Err(PoolError::InvalidFeeInput);
         }
@@ -30,8 +31,8 @@ impl PoolFee {
         Ok(())
     }
 
-    pub fn get(&self) -> DecimalU64 {
-        DecimalU64::new(self.0 as u64, DECIMALS).unwrap()
+    pub fn get(&self) -> DecT {
+        DecT::new(self.0 as u64, DECIMALS).unwrap()
     }
 }
 
@@ -39,8 +40,8 @@ impl PoolFee {
 mod tests {
     use super::*;
 
-    fn new_u64(value: u64, decimals: u8) -> DecimalU64 {
-        DecimalU64::new(value, decimals).unwrap()
+    fn new_u64(value: u64, decimals: u8) -> DecT {
+        DecT::new(value, decimals).unwrap()
     }
 
     #[test]
