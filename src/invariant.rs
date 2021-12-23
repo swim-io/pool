@@ -1,9 +1,3 @@
-// see doc/swap_invariants.ipynb for an explanation on the math in here
-
-//TODO it should be possible to get rid of the duplicated code and the ugly encoding of the type in the
-//     function name by properly using generics... but I couldn't figure out how in a reasonable amount
-//     of time (the num_traits crate only got me so far...)
-
 use crate::{
     common::create_array,
     decimal::{self, DecimalU64, U128},
@@ -937,11 +931,8 @@ mod tests {
     #[test]
     #[ignore]
     fn reproduce_unwrap_error() {
-        // println!("");
         const TOKEN_COUNT: usize = 6;
         let amp_factor = DecT::new(1000, 0).unwrap();
-        // let lp_fee = DecT::new(1000, 4).unwrap();
-        // let governance_fee = DecT::new(1000, 5).unwrap();
         let lp_fee = DecT::new(1, 3).unwrap();
         let governance_fee = DecT::new(1, 3).unwrap();
         let mut balances = [AmountT::from(0); TOKEN_COUNT];
