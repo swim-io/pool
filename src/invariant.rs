@@ -35,8 +35,7 @@ fn fast_round(decimal: Decimal) -> AmountT {
     // AmountT::from((decimal + ONE_HALF).trunc().to_u128().unwrap())
 
     //due to rounding errors we can get negative values here, hence the unwrap_or
-    //decimal.to_u128().unwrap_or(0).into()
-    decimal.to_u128().unwrap().into()
+    decimal.to_u128().unwrap_or(0).into()
 }
 
 impl U192 {
