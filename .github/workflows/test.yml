@@ -64,5 +64,5 @@ jobs:
         with:
           key: ${{ runner.os }}-${{ env.SOLANA_VERSION }}
 
-      - name: Run unit tests
+      - name: Run bpf tests
         run: cargo test-bpf -- --show-output --nocapture --test-threads=1 2>&1
