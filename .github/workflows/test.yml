@@ -9,6 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_TOOLCHAIN: "1.58.1"
+  SOLANA_VERSION: "1.8.14"
 
 jobs:
   test:
@@ -52,6 +53,7 @@ jobs:
       - name: Install Solana
         if: steps.solana-cache.outputs.cache-hit != 'true'
         run: |
+	  sh -c "$(curl -sSfL https://release.solana.com/v${{ env.SOLANA_VERSION }}install)"
           solana-install init ${{ env.SOLANA_VERSION }}
       - name: Setup Solana Path
         run: |
