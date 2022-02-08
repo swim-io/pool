@@ -65,5 +65,4 @@ jobs:
           key: ${{ runner.os }}-${{ env.SOLANA_VERSION }}
 
       - name: Run unit tests
-        working-directory: /
-        run: cargo test-bpf
+        run: cargo test-bpf -- --show-output --nocapture --test-threads=1 2>&1 | ./sol_spam_filter.py
