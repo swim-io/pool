@@ -51,6 +51,33 @@ cargo test-bpf -- --show-output --nocapture --test-threads=1 2>&1 | ./sol_spam_f
 cargo test-bpf -- --test test_pool_init --show-output
 ```
 
+
+# Scan for vulnerabilities
+[Soteria](https://www.soteria.dev/post/soteria-a-vulnerability-scanner-for-solana-smart-contracts)
+## Install
+### On Linux
+```bash
+# install Soteria
+cd ~
+sh -c "$(curl -k https://supercompiler.xyz/install)"
+# Depending on your system, you may need to change your PATH environment variable to include soteria
+export PATH=$PWD/soteria-linux-develop/bin/:$PATH
+```
+
+### On Docker
+```bash
+docker run -v $PWD/:/workspace -it greencorelab/soteria:0.1.0 /bin/bash
+```
+
+## Check vulnerabilities
+```bash
+# check vulnerabilities in selected library codes
+soteria .
+# check vulnerabilities in all library codes
+soteria -analyzeAll .
+```
+
+
 # Fuzzing
 
 The honggfuzz library is incompatable with macOS big sur and above (as of 11/01/2021). The workaround is to run the
