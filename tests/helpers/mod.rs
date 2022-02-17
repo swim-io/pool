@@ -41,10 +41,9 @@ fn copy_keypair(keypair: &Keypair) -> Keypair {
     Keypair::from_bytes(&keypair.to_bytes()).unwrap()
 }
 
-pub struct SolanaNode_v2 {
-    // banks_client: BanksClient,
+pub struct SolanaNode {
     test_validator: TestValidator,
-    banks_client: RpcClient,
+    rpc_client: RpcClient,
     payer: Keypair,
     default_delegate: Keypair, //this could just be payer too but nicer to keep it at least a little separate
     rent: Rent,
@@ -52,21 +51,10 @@ pub struct SolanaNode_v2 {
     signers: Vec<Keypair>,
 }
 
-impl SolanaNode_v2 {
+impl SolanaNode {
     pub fn new() -> Self {
-        // let (mut banks_client, payer, _recent_blockhash) = {
-        //     //TODO I don't yet know why these arguments are passed along here
-        //     let mut test = ProgramTest::new(
-        //         "pool",
-        //         pool::id(),
-        //         processor!(pool::processor::Processor::<TOKEN_COUNT>::process),
-        //     );
-
-        //     test.set_bpf_compute_max_units(COMPUTE_BUDGET);
-        //     test.start().await
-        // };
-
         let (test_validator, payer) = TestValidatorGenesis::default()
+            //  use this if running test in vscode
             // .add_program("target/deploy/pool", pool::id())
             .add_program("pool", pool::id())
             .start();
@@ -74,28 +62,14 @@ impl SolanaNode_v2 {
         // solana v1.9 and up
         // let rpc_client = test_validator.get_rpc_client();
 
-        // let rpc_client = test_validator.rpc_client().0.new_with_commitment(CommitmentConfig::finalized());
-        let rpc_client = RpcClient::new_with_commitment(test_validator.rpc_url(), CommitmentConfig::finalized());
+        let rpc_client = test_validator.rpc_client().0;
+        // let rpc_client = RpcClient::new_with_commitment(test_validator.rpc_url(), CommitmentConfig::finalized());
 
-        // let rent = rpc_client.get_account(&Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap()).map(|result| {
-        //     from_account::<Rent, _>(&result)
-        // }).unwrap().unwrap();
-
-        // let rent = rpc_client.get_rent().await.unwrap();
-
-        // let rent = banks_client.get_rent().await.unwrap();
         let default_delegate = Keypair::new();
-        // Self {
-        //     banks_client,
-        //     payer,
-        //     default_delegate,
-        //     rent,
-        //     instructions: Vec::new(),
-        //     signers: Vec::new(),
-        // }
+
         Self {
             test_validator,
-            banks_client: rpc_client,
+            rpc_client,
             payer,
             default_delegate,
             rent: TestValidatorGenesis::default().rent,
@@ -104,29 +78,8 @@ impl SolanaNode_v2 {
         }
     }
 
-    // /// Return the cluster Sysvar
-    // pub fn get_sysvar<T: Sysvar>(&mut self) -> impl Future<Output = io::Result<T>> + '_ {
-    //     self.get_account(T::id()).map(|result| {
-    //         let sysvar = result?
-    //             .ok_or(BanksClientError::ClientError("Sysvar not present"))
-    //             .map_err(io::Error::from)?; // Remove this map when return Err type updated to BanksClientError
-    //         from_account::<T, _>(&sysvar)
-    //             .ok_or(BanksClientError::ClientError(
-    //                 "Failed to deserialize sysvar",
-    //             ))
-    //             .map_err(Into::into) // Remove this when return Err type updated to BanksClientError
-    //     })
-    // }
-
-    // /// Return the cluster rent
-    // pub fn get_rent(&mut self) -> impl Future<Output = io::Result<Rent>> + '_ {
-    //     self.get_sysvar::<Rent>()
-    // }
     pub fn get_account_state(&mut self, pubkey: &Pubkey) -> AccountState {
-        self.banks_client.get_account(pubkey).unwrap()
-        // .await
-        // .expect("account not found")
-        // .expect("account empty")
+        self.rpc_client.get_account(pubkey).expect("account not found")
     }
 
     fn default_owner(&self) -> &Keypair {
@@ -184,50 +137,41 @@ impl SolanaNode_v2 {
 
     pub fn execute_transaction(&mut self) -> Result<(), InstructionError> {
         if self.instructions.is_empty() {
-            println!("ixs.is_empty()");
+            // println!("ixs.is_empty()");
             return Ok(());
         }
-        println!("!ixs.is_empty: {:?}", self.instructions);
+        // println!("!ixs.is_empty: {:?}", self.instructions);
 
         self.signers.push(copy_keypair(&self.payer));
 
         //solana program v1.9.0
         // let recent_blockhash = self.banks_client.get_latest_blockhash().unwrap();
-        let recent_blockhash = self.banks_client.get_recent_blockhash().unwrap().0;
+        let recent_blockhash = self
+            .rpc_client
+            .get_recent_blockhash()
+            .expect("failed to get recent blockhash")
+            .0;
 
         let transaction = Transaction::new_signed_with_payer(
             &self.instructions,
             Some(&self.payer.pubkey()),
             &self.signers.iter().map(|signer| signer).collect::<Vec<_>>(),
-            // self.banks_client.get_recent_blockhash().unwrap(),
             recent_blockhash,
         );
-        // let result = self.banks_client.process_transaction(transaction).await;
-        let result = self.banks_client.send_and_confirm_transaction(&transaction);
+        let result = self.rpc_client.send_and_confirm_transaction(&transaction);
 
         self.instructions.clear();
         self.signers.clear();
 
-        // if let Err(transport_error) = result {
-        //     if let TransportError::TransactionError(tx_error) = transport_error {
-        //         if let TransactionError::InstructionError(_ix_index, ix_error) = tx_error {
-        //             return Err(ix_error);
-        //         } else {
-        //             panic!("unexpected transport error: {:?}", tx_error);
-        //         }
-        //     } else {
-        //         panic!("unexpected transport error: {:?}", transport_error);
-        //     }
-        // }
         if let Err(client_error) = result {
-            println!("execute_txn detected an error");
+            // println!("execute_txn detected an error");
             let ClientError { request, kind } = client_error;
             match kind.get_transaction_error() {
                 Some(TransactionError::InstructionError(_ix_index, ix_error)) => {
                     return Err(ix_error);
                 }
-                Some(txErr) => {
-                    panic!("unexpected transactionError: {:?} for request: {:?}", txErr, request);
+                Some(tx_err) => {
+                    panic!("unexpected transactionError: {:?} for request: {:?}", tx_err, request);
                 }
                 None => {
                     panic!("unexpected non-transaction error  for request: {:?}", request);
@@ -235,7 +179,6 @@ impl SolanaNode_v2 {
             }
         }
         Ok(())
-        // result?
     }
 }
 
@@ -244,7 +187,7 @@ impl SolanaNode_v2 {
 pub struct MintAccount(Pubkey);
 
 impl MintAccount {
-    pub fn new(decimals: u8, solnode: &mut SolanaNode_v2) -> Self {
+    pub fn new(decimals: u8, solnode: &mut SolanaNode) -> Self {
         Self(solnode.create_mint(decimals, &solnode.default_owner().pubkey()))
     }
 
@@ -252,11 +195,11 @@ impl MintAccount {
         &self.0
     }
 
-    pub fn state(&self, solnode: &mut SolanaNode_v2) -> MintState {
+    pub fn state(&self, solnode: &mut SolanaNode) -> MintState {
         Self::get_state(&self.0, solnode)
     }
 
-    pub fn mint_to(&self, recipient: &TokenAccount, amount: AmountT, solnode: &mut SolanaNode_v2) {
+    pub fn mint_to(&self, recipient: &TokenAccount, amount: AmountT, solnode: &mut SolanaNode) {
         if amount > 0 {
             solnode.push_instruction(
                 spl_token::instruction::mint_to(
@@ -272,7 +215,7 @@ impl MintAccount {
         }
     }
 
-    fn get_state(pubkey: &Pubkey, solnode: &mut SolanaNode_v2) -> MintState {
+    fn get_state(pubkey: &Pubkey, solnode: &mut SolanaNode) -> MintState {
         let mint_account = solnode.get_account_state(pubkey);
         MintState::unpack_from_slice(mint_account.data.as_slice()).unwrap()
     }
@@ -282,7 +225,7 @@ impl MintAccount {
 pub struct TokenAccount(Pubkey);
 
 impl TokenAccount {
-    pub fn new(mint: &MintAccount, solnode: &mut SolanaNode_v2) -> Self {
+    pub fn new(mint: &MintAccount, solnode: &mut SolanaNode) -> Self {
         Self::internal_new(&mint.pubkey(), solnode)
     }
 
@@ -290,15 +233,15 @@ impl TokenAccount {
         &self.0
     }
 
-    pub fn state(&self, solnode: &mut SolanaNode_v2) -> TokenState {
+    pub fn state(&self, solnode: &mut SolanaNode) -> TokenState {
         Self::get_state(&self.0, solnode)
     }
 
-    pub fn balance(&self, solnode: &mut SolanaNode_v2) -> AmountT {
+    pub fn balance(&self, solnode: &mut SolanaNode) -> AmountT {
         Self::get_balance(&self.0, solnode)
     }
 
-    pub fn approve(&self, amount: AmountT, solnode: &mut SolanaNode_v2) {
+    pub fn approve(&self, amount: AmountT, solnode: &mut SolanaNode) {
         solnode.push_instruction(
             spl_token::instruction::approve(
                 &spl_token::id(),
@@ -312,16 +255,16 @@ impl TokenAccount {
         );
     }
 
-    fn get_state(pubkey: &Pubkey, solnode: &mut SolanaNode_v2) -> TokenState {
+    fn get_state(pubkey: &Pubkey, solnode: &mut SolanaNode) -> TokenState {
         let token_account = solnode.get_account_state(pubkey);
         TokenState::unpack_from_slice(token_account.data.as_slice()).unwrap()
     }
 
-    fn get_balance(pubkey: &Pubkey, solnode: &mut SolanaNode_v2) -> AmountT {
+    fn get_balance(pubkey: &Pubkey, solnode: &mut SolanaNode) -> AmountT {
         Self::get_state(pubkey, solnode).amount
     }
 
-    fn internal_new(mint: &Pubkey, solnode: &mut SolanaNode_v2) -> Self {
+    fn internal_new(mint: &Pubkey, solnode: &mut SolanaNode) -> Self {
         Self(solnode.create_token_account(&mint, &solnode.default_owner().pubkey()))
     }
 }
@@ -343,24 +286,24 @@ impl DeployedPool {
         amp_factor: DecT,
         lp_fee: DecT,
         governance_fee: DecT,
-        solnode: &mut SolanaNode_v2,
+        solnode: &mut SolanaNode,
     ) -> Result<Self, InstructionError> {
         let pool_keypair = solnode.create_account(
             solana_program::borsh::get_packed_len::<pool::state::PoolState<TOKEN_COUNT>>(),
             Some(&pool::id()),
         );
-        println!("executing 0 txn in deployedPool::new()");
+        // println!("executing 0 txn in deployedPool::new()");
         solnode.execute_transaction().expect("transaction failed unexpectedly");
         let (authority, nonce) = Pubkey::find_program_address(&[&pool_keypair.pubkey().to_bytes()[..32]], &pool::id());
         let lp_mint = solnode.create_mint(lp_decimals, &authority);
-        println!("executing first txn in deployedPool::new()");
-        solnode.execute_transaction().expect("transaction failed unexpectedly");
+        // println!("executing first txn in deployedPool::new()");
+        // solnode.execute_transaction().expect("transaction failed unexpectedly");
         let stable_accounts = create_array(|i| solnode.create_token_account(&stable_mints[i].pubkey(), &authority));
-        println!("executing second txn in deployed pool::new()");
+        // println!("executing second txn in deployed pool::new()");
         solnode.execute_transaction().expect("transaction failed unexpectedly");
         let governance_keypair = solnode.create_account(0, None);
         let governance_fee_account = solnode.create_token_account(&lp_mint, &governance_keypair.pubkey());
-        println!("executing third txn in deployed pool::new()");
+        // println!("executing third txn in deployed pool::new()");
         solnode.execute_transaction().expect("transaction failed unexpectedly");
 
         solnode.push_instruction(
@@ -396,9 +339,9 @@ impl DeployedPool {
         defi_instruction: DeFiInstruction<TOKEN_COUNT>,
         user_stable_accounts: &[TokenAccount; TOKEN_COUNT],
         user_lp_account: Option<&TokenAccount>,
-        solnode: &mut SolanaNode_v2,
+        solnode: &mut SolanaNode,
     ) -> Result<(), InstructionError> {
-        println!("execute_defi_ix - execute1");
+        // println!("execute_defi_ix - execute1");
         solnode.execute_transaction().expect("transaction failed unexpectedly");
 
         solnode.push_instruction(
@@ -418,7 +361,7 @@ impl DeployedPool {
             .unwrap(),
         );
         solnode.push_signer(&copy_keypair(solnode.default_delegate()));
-        println!("execute_defi_ix - execute2");
+        // println!("execute_defi_ix - execute2");
         solnode.execute_transaction()
     }
 
@@ -426,9 +369,9 @@ impl DeployedPool {
         &self,
         gov_instruction: GovernanceInstruction<TOKEN_COUNT>,
         gov_fee_account: Option<&Pubkey>,
-        solnode: &mut SolanaNode_v2,
+        solnode: &mut SolanaNode,
     ) -> Result<(), InstructionError> {
-        println!("execute_governance_instruction - execute1");
+        // println!("execute_governance_instruction - execute1");
         solnode.execute_transaction().expect("transaction failed unexpectedly");
 
         solnode.push_instruction(
@@ -442,11 +385,11 @@ impl DeployedPool {
             .unwrap(),
         );
         solnode.push_signer(&copy_keypair(&self.governance_keypair));
-        println!("execute_governance_instruction - execute2");
+        // println!("execute_governance_instruction - execute2");
         solnode.execute_transaction()
     }
 
-    pub fn balances(&self, solnode: &mut SolanaNode_v2) -> [AmountT; TOKEN_COUNT] {
+    pub fn balances(&self, solnode: &mut SolanaNode) -> [AmountT; TOKEN_COUNT] {
         //async closures are unstable...
         let mut balances = [0 as AmountT; TOKEN_COUNT];
         for i in 0..TOKEN_COUNT {
@@ -455,20 +398,20 @@ impl DeployedPool {
         balances
     }
 
-    pub fn governance_lp_balance(&self, solnode: &mut SolanaNode_v2) -> AmountT {
+    pub fn governance_lp_balance(&self, solnode: &mut SolanaNode) -> AmountT {
         TokenAccount::get_balance(&self.governance_fee_account, solnode)
     }
 
-    pub fn state(&self, solnode: &mut SolanaNode_v2) -> PoolState<TOKEN_COUNT> {
+    pub fn state(&self, solnode: &mut SolanaNode) -> PoolState<TOKEN_COUNT> {
         let pool_account = solnode.get_account_state(&self.pool_keypair.pubkey());
         PoolState::<TOKEN_COUNT>::deserialize(&mut pool_account.data.as_slice()).unwrap()
     }
 
-    pub fn lp_total_supply(&self, solnode: &mut SolanaNode_v2) -> AmountT {
+    pub fn lp_total_supply(&self, solnode: &mut SolanaNode) -> AmountT {
         MintAccount::get_state(&self.lp_mint, solnode).supply
     }
 
-    pub fn create_lp_account(&self, solnode: &mut SolanaNode_v2) -> TokenAccount {
+    pub fn create_lp_account(&self, solnode: &mut SolanaNode) -> TokenAccount {
         TokenAccount::internal_new(&self.lp_mint, solnode)
     }
 }
