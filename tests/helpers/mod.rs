@@ -3,10 +3,11 @@ use borsh::BorshDeserialize;
 use pool::{common::*, decimal::*, instruction::*, state::PoolState, TOKEN_COUNT};
 use solana_program::{program_pack::Pack, pubkey::Pubkey, rent::Rent};
 
+use solana_client::{client_error::ClientError, rpc_client::RpcClient};
 use solana_program_test::*;
 use solana_sdk::{
-    account::Account as AccountState,
     account::from_account,
+    account::Account as AccountState,
     commitment_config::*,
     instruction::{Instruction, InstructionError},
     signature::{Keypair, Signer},
@@ -14,12 +15,8 @@ use solana_sdk::{
     transaction::{Transaction, TransactionError},
     transport::TransportError,
 };
-use spl_token::state::{Account as TokenState, Mint as MintState};
 use solana_validator::test_validator::*;
-use solana_client::{
-    rpc_client::RpcClient,
-    client_error::ClientError
-};
+use spl_token::state::{Account as TokenState, Mint as MintState};
 use std::str::FromStr;
 
 // use solana_client::rpc_client::RpcClient;
@@ -32,7 +29,6 @@ use std::str::FromStr;
 //     solana_sdk::{signature::Signer, transaction::Transaction},
 //     solana_validator::test_validator::*,
 // };
-
 
 // limit to track compute unit increase.
 // Mainnet compute budget as of 08/25/2021 is 200_000
@@ -70,12 +66,11 @@ impl SolanaNode_v2 {
         //     test.start().await
         // };
 
-
         let (test_validator, payer) = TestValidatorGenesis::default()
             // .add_program("target/deploy/pool", pool::id())
             .add_program("pool", pool::id())
             .start();
-        
+
         // solana v1.9 and up
         // let rpc_client = test_validator.get_rpc_client();
 
@@ -100,7 +95,7 @@ impl SolanaNode_v2 {
         // }
         Self {
             test_validator,
-            banks_client: rpc_client, 
+            banks_client: rpc_client,
             payer,
             default_delegate,
             rent: TestValidatorGenesis::default().rent,
@@ -128,12 +123,10 @@ impl SolanaNode_v2 {
     //     self.get_sysvar::<Rent>()
     // }
     pub fn get_account_state(&mut self, pubkey: &Pubkey) -> AccountState {
-        self.banks_client
-            .get_account(pubkey)
-            .unwrap()
-            // .await
-            // .expect("account not found")
-            // .expect("account empty")
+        self.banks_client.get_account(pubkey).unwrap()
+        // .await
+        // .expect("account not found")
+        // .expect("account empty")
     }
 
     fn default_owner(&self) -> &Keypair {
@@ -164,9 +157,7 @@ impl SolanaNode_v2 {
 
         self.push_signer(&keypair);
 
-        self
-            .execute_transaction()
-            .expect("transaction failed unexpectedly");
+        self.execute_transaction().expect("transaction failed unexpectedly");
 
         keypair
     }
@@ -177,9 +168,7 @@ impl SolanaNode_v2 {
             spl_token::instruction::initialize_mint(&spl_token::id(), &keypair.pubkey(), owner, None, decimals)
                 .unwrap(),
         );
-        self
-            .execute_transaction()
-            .expect("transaction failed unexpectedly");
+        self.execute_transaction().expect("transaction failed unexpectedly");
 
         keypair.pubkey()
     }
@@ -199,7 +188,6 @@ impl SolanaNode_v2 {
             return Ok(());
         }
         println!("!ixs.is_empty: {:?}", self.instructions);
-
 
         self.signers.push(copy_keypair(&self.payer));
 
@@ -233,9 +221,9 @@ impl SolanaNode_v2 {
         // }
         if let Err(client_error) = result {
             println!("execute_txn detected an error");
-            let ClientError{request, kind} = client_error;
+            let ClientError { request, kind } = client_error;
             match kind.get_transaction_error() {
-                Some(TransactionError::InstructionError(_ix_index, ix_error))  => {
+                Some(TransactionError::InstructionError(_ix_index, ix_error)) => {
                     return Err(ix_error);
                 }
                 Some(txErr) => {
@@ -362,26 +350,18 @@ impl DeployedPool {
             Some(&pool::id()),
         );
         println!("executing 0 txn in deployedPool::new()");
-        solnode
-            .execute_transaction()
-            .expect("transaction failed unexpectedly");
+        solnode.execute_transaction().expect("transaction failed unexpectedly");
         let (authority, nonce) = Pubkey::find_program_address(&[&pool_keypair.pubkey().to_bytes()[..32]], &pool::id());
         let lp_mint = solnode.create_mint(lp_decimals, &authority);
         println!("executing first txn in deployedPool::new()");
-        solnode
-            .execute_transaction()
-            .expect("transaction failed unexpectedly");
+        solnode.execute_transaction().expect("transaction failed unexpectedly");
         let stable_accounts = create_array(|i| solnode.create_token_account(&stable_mints[i].pubkey(), &authority));
         println!("executing second txn in deployed pool::new()");
-        solnode
-            .execute_transaction()
-            .expect("transaction failed unexpectedly");
+        solnode.execute_transaction().expect("transaction failed unexpectedly");
         let governance_keypair = solnode.create_account(0, None);
         let governance_fee_account = solnode.create_token_account(&lp_mint, &governance_keypair.pubkey());
         println!("executing third txn in deployed pool::new()");
-        solnode
-            .execute_transaction()
-            .expect("transaction failed unexpectedly");
+        solnode.execute_transaction().expect("transaction failed unexpectedly");
 
         solnode.push_instruction(
             create_init_ix::<TOKEN_COUNT>(
@@ -419,9 +399,7 @@ impl DeployedPool {
         solnode: &mut SolanaNode_v2,
     ) -> Result<(), InstructionError> {
         println!("execute_defi_ix - execute1");
-        solnode
-            .execute_transaction()
-            .expect("transaction failed unexpectedly");
+        solnode.execute_transaction().expect("transaction failed unexpectedly");
 
         solnode.push_instruction(
             create_defi_ix(
@@ -451,9 +429,7 @@ impl DeployedPool {
         solnode: &mut SolanaNode_v2,
     ) -> Result<(), InstructionError> {
         println!("execute_governance_instruction - execute1");
-        solnode
-            .execute_transaction()
-            .expect("transaction failed unexpectedly");
+        solnode.execute_transaction().expect("transaction failed unexpectedly");
 
         solnode.push_instruction(
             create_governance_ix(
