@@ -42,6 +42,7 @@ jobs:
           override: true
           profile: minimal
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt, clippy
 
       # Install Solana
       - name: Cache Solana binaries
