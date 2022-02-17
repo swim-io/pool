@@ -19,17 +19,6 @@ use solana_validator::test_validator::*;
 use spl_token::state::{Account as TokenState, Mint as MintState};
 use std::str::FromStr;
 
-// use solana_client::rpc_client::RpcClient;
-// use {
-//     assert_matches::*,
-//     solana_program::{
-//         instruction::{AccountMeta, Instruction},
-//         pubkey::Pubkey,
-//     },
-//     solana_sdk::{signature::Signer, transaction::Transaction},
-//     solana_validator::test_validator::*,
-// };
-
 // limit to track compute unit increase.
 // Mainnet compute budget as of 08/25/2021 is 200_000
 pub const COMPUTE_BUDGET: u64 = 200_000;
@@ -63,6 +52,7 @@ impl SolanaNode {
         // let rpc_client = test_validator.get_rpc_client();
 
         let rpc_client = test_validator.rpc_client().0;
+        // note: finalized commitment is SIGNIFICANTLY slower
         // let rpc_client = RpcClient::new_with_commitment(test_validator.rpc_url(), CommitmentConfig::finalized());
 
         let default_delegate = Keypair::new();
@@ -292,18 +282,17 @@ impl DeployedPool {
             solana_program::borsh::get_packed_len::<pool::state::PoolState<TOKEN_COUNT>>(),
             Some(&pool::id()),
         );
-        // println!("executing 0 txn in deployedPool::new()");
+
         solnode.execute_transaction().expect("transaction failed unexpectedly");
         let (authority, nonce) = Pubkey::find_program_address(&[&pool_keypair.pubkey().to_bytes()[..32]], &pool::id());
         let lp_mint = solnode.create_mint(lp_decimals, &authority);
-        // println!("executing first txn in deployedPool::new()");
-        // solnode.execute_transaction().expect("transaction failed unexpectedly");
+
         let stable_accounts = create_array(|i| solnode.create_token_account(&stable_mints[i].pubkey(), &authority));
-        // println!("executing second txn in deployed pool::new()");
+
         solnode.execute_transaction().expect("transaction failed unexpectedly");
         let governance_keypair = solnode.create_account(0, None);
         let governance_fee_account = solnode.create_token_account(&lp_mint, &governance_keypair.pubkey());
-        // println!("executing third txn in deployed pool::new()");
+
         solnode.execute_transaction().expect("transaction failed unexpectedly");
 
         solnode.push_instruction(
@@ -341,7 +330,6 @@ impl DeployedPool {
         user_lp_account: Option<&TokenAccount>,
         solnode: &mut SolanaNode,
     ) -> Result<(), InstructionError> {
-        // println!("execute_defi_ix - execute1");
         solnode.execute_transaction().expect("transaction failed unexpectedly");
 
         solnode.push_instruction(
@@ -361,7 +349,7 @@ impl DeployedPool {
             .unwrap(),
         );
         solnode.push_signer(&copy_keypair(solnode.default_delegate()));
-        // println!("execute_defi_ix - execute2");
+
         solnode.execute_transaction()
     }
 
@@ -371,7 +359,6 @@ impl DeployedPool {
         gov_fee_account: Option<&Pubkey>,
         solnode: &mut SolanaNode,
     ) -> Result<(), InstructionError> {
-        // println!("execute_governance_instruction - execute1");
         solnode.execute_transaction().expect("transaction failed unexpectedly");
 
         solnode.push_instruction(
@@ -385,7 +372,7 @@ impl DeployedPool {
             .unwrap(),
         );
         solnode.push_signer(&copy_keypair(&self.governance_keypair));
-        // println!("execute_governance_instruction - execute2");
+
         solnode.execute_transaction()
     }
 
