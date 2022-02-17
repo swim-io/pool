@@ -43,8 +43,9 @@ honggfuzz = {version = "0.5.54", optional = true }
 roots = { version = "0.0.7", optional = true }
 
 [dev-dependencies]
-solana-program-test = "1.8.14"
-solana-sdk = "1.8.14"
-
+solana-program-test = "=1.8.14"
+solana-sdk = "=1.8.14"
+solana-validator = "=1.8.14"
+solana-client = "=1.8.14"
 [lib]
 crate-type = ["cdylib", "lib"]
