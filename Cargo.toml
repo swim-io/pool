@@ -26,7 +26,7 @@ borsh-derive = "0.9.1"
 #numerics
 # This must be pinned to 0.9.1 until Solana's Rust fork supports Rust >=1.56.1
 uint = { version = "=0.9.1", default-features = false }
-rust_decimal = {version = "1.15", features = [ "maths" ] }
+rust_decimal = {version = "1.21", features = [ "maths" ] }
 rust_decimal_macros = "1.15"
 
 #error handling
