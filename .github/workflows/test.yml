@@ -71,4 +71,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - run: cargo deny check license
+      - uses: actions/checkout@v2
+      - name: Install Rust nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          override: true
+          profile: minimal
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt, clippy, cargo-deny
+      - name: Run cargo license checks
+      - run: cargo deny init && cargo deny check license
