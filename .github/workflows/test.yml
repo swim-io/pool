@@ -23,6 +23,8 @@ jobs:
           profile: minimal
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt, clippy
+      - name: Install dependencies
+        run: sudo apt-get install -y libssl-dev libudev-dev pkg-config zlib1g-dev llvm clang make
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v1
       - run: cargo test
@@ -40,6 +42,7 @@ jobs:
           override: true
           profile: minimal
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt, clippy
 
       # Install Solana
       - name: Cache Solana binaries
@@ -59,6 +62,8 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
           export PATH="/home/runner/.local/share/solana/install/active_release/bin:$PATH"
           solana --version
+      - name: Install dependencies
+        run: sudo apt-get install -y libssl-dev libudev-dev pkg-config zlib1g-dev llvm clang make
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:

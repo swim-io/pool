@@ -3,7 +3,7 @@ FROM rust:latest
 WORKDIR app
 
 RUN cargo install honggfuzz
-RUN sh -c "$(curl -sSfL https://release.solana.com/v1.7.6/install)"
+RUN sh -c "$(curl -sSfL https://release.solana.com/v1.8.14/install)"
 RUN apt-get update
 RUN apt-get install -y build-essential binutils-dev libunwind-dev libblocksruntime-dev liblzma-dev lldb rust-lldb
 

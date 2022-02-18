@@ -16,7 +16,7 @@ fuzz = ["arbitrary", "roots"]
 
 [dependencies]
 #solana related dependencies
-solana-program = "1.7.10"
+solana-program = "1.8.14"
 spl-token = { version = "3.1.1", features = ["no-entrypoint"] }
 
 #serializiation/deserialzation
@@ -24,7 +24,8 @@ borsh = { version = "0.9.1", features = ["const-generics"] }
 borsh-derive = "0.9.1"
 
 #numerics
-uint = { version = "0.9.1", default-features = false }
+# This must be pinned to 0.9.1 until Solana's Rust fork supports Rust >=1.56.1
+uint = { version = "=0.9.1", default-features = false }
 rust_decimal = {version = "1.15", features = [ "maths" ] }
 rust_decimal_macros = "1.15"
 
@@ -42,8 +43,9 @@ honggfuzz = {version = "0.5.54", optional = true }
 roots = { version = "0.0.7", optional = true }
 
 [dev-dependencies]
-solana-program-test = "1.7.4"
-solana-sdk = "1.7.4"
-
+solana-program-test = "=1.8.14"
+solana-sdk = "=1.8.14"
+solana-validator = "=1.8.14"
+solana-client = "=1.8.14"
 [lib]
 crate-type = ["cdylib", "lib"]
