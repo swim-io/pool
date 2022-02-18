@@ -1,8 +1,11 @@
 [package]
 name = "pool"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["z0ji <zoji@maelstrom.finance>"]
-edition = "2018"
+edition = "2021"
+homepage = "https://swim.io"
+keywords = ["solana", "swim", "progrm", "pool"]
+license = "BUSL-1.1"
 
 [workspace]
 members = [
@@ -44,6 +47,7 @@ roots = { version = "0.0.7", optional = true }
 [dev-dependencies]
 solana-program-test = "1.7.4"
 solana-sdk = "1.7.4"
+cargo-deny = "0.11.3"
 
 [lib]
 crate-type = ["cdylib", "lib"]
