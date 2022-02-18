@@ -74,4 +74,4 @@ jobs:
       - uses: actions/checkout@v2
       - uses: EmbarkStudios/cargo-deny-action@v1
         with:
-          comnand: check license
+          command: check license
