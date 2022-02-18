@@ -2,9 +2,9 @@
 name = "pool"
 version = "1.0.0"
 authors = ["z0ji <zoji@maelstrom.finance>"]
-edition = "2021"
+edition = "2018"
 homepage = "https://swim.io"
-keywords = ["solana", "swim", "progrm", "pool"]
+keywords = ["solana", "swim", "program", "pool"]
 license = "BUSL-1.1"
 
 [workspace]
