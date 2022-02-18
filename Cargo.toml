@@ -47,7 +47,6 @@ roots = { version = "0.0.7", optional = true }
 [dev-dependencies]
 solana-program-test = "1.7.4"
 solana-sdk = "1.7.4"
-cargo-deny = "0.11.3"
 
 [lib]
 crate-type = ["cdylib", "lib"]
