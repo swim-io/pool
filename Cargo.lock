@@ -120,9 +120,9 @@ checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
 name = "arrayvec"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be4dc07131ffa69b8072d35f5007352af944213cde02545e2103680baed38fcd"
+checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
 
 [[package]]
 name = "ascii"
@@ -2800,7 +2800,7 @@ name = "pool"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
- "arrayvec 0.7.1",
+ "arrayvec 0.7.2",
  "borsh",
  "borsh-derive",
  "honggfuzz",
@@ -2824,7 +2824,7 @@ name = "pool-fuzz"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
- "arrayvec 0.7.1",
+ "arrayvec 0.7.2",
  "borsh",
  "borsh-derive",
  "honggfuzz",
@@ -3385,7 +3385,7 @@ version = "1.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d37baa70cf8662d2ba1c1868c5983dda16ef32b105cce41fb5c47e72936a90b3"
 dependencies = [
- "arrayvec 0.7.1",
+ "arrayvec 0.7.2",
  "num-traits",
  "serde",
 ]
