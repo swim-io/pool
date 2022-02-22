@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 honggfuzz = { version = "0.5.54" }
-arbitrary = { version = "1.0.2", features = ["derive"] }
+arbitrary = { version = "1.1.0", features = ["derive"] }
 
 #pool related dependencies
 pool = {path = "..", features = ["fuzz", "no-entrypoint"]}
