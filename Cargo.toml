@@ -1,8 +1,11 @@
 [package]
 name = "pool"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["z0ji <zoji@maelstrom.finance>"]
 edition = "2018"
+homepage = "https://swim.io"
+keywords = ["solana", "swim", "program", "pool"]
+license = "BUSL-1.1"
 
 [workspace]
 members = [
