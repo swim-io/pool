@@ -27,7 +27,7 @@ borsh-derive = "0.9.1"
 #numerics
 uint = { version = "=0.9.1", default-features = false }
 rust_decimal = {version = "1.22", features = [ "maths" ] }
-rust_decimal_macros = "1.15"
+rust_decimal_macros = "1.22"
 
 #error handling
 thiserror = "1.0"
