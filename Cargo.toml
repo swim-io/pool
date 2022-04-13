@@ -1,7 +1,7 @@
 [package]
 name = "pool"
 version = "1.0.0"
-authors = ["z0ji <zoji@maelstrom.finance>"]
+authors = ["swimivan <ivan@swim.io>"]
 edition = "2018"
 homepage = "https://swim.io"
 keywords = ["solana", "swim", "program", "pool"]
@@ -16,6 +16,14 @@ members = [
 no-entrypoint = []
 test-bpf = []
 fuzz = ["arbitrary", "roots"]
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1
 
 [dependencies]
 #solana related dependencies
