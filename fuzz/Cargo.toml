@@ -21,7 +21,7 @@ spl-associated-token-account = { version = "1.0.2", features = ["no-entrypoint"]
 
 
 #serializiation/deserialzation
-borsh = { version = "0.9.1", features = ["const-generics"] }
+borsh = { version = "0.9.3", features = ["const-generics"] }
 borsh-derive = "0.9.1"
 
 #numerics
