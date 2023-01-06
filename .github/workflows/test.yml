@@ -15,7 +15,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3.1.0
+      - uses: actions/checkout@v3.3.0
       - name: Install Rust nightly
         uses: actions-rs/toolchain@v1
         with:
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3.1.0
+      - uses: actions/checkout@v3.3.0
 
       # Install Rust
       - name: Install Rust
@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3.1.0
+      - uses: actions/checkout@v3.3.0
       - uses: EmbarkStudios/cargo-deny-action@v1
         with:
           command: check license
