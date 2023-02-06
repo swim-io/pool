@@ -362,8 +362,18 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "18dda7dc709193c0d86a1a51050a926dc3df1cf262ec46a23a25dba421ea1924"
 dependencies = [
- "borsh-derive",
+ "borsh-derive 0.9.1",
  "hashbrown 0.9.1",
+]
+
+[[package]]
+name = "borsh"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "822462c1e7b17b31961798a6874b36daea6818e99e0cb7d3b7b0fa3c477751c3"
+dependencies = [
+ "borsh-derive 0.10.0",
+ "hashbrown 0.11.2",
 ]
 
 [[package]]
@@ -372,8 +382,21 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "684155372435f578c0fa1acd13ebbb182cc19d6b38b64ae7901da4393217d264"
 dependencies = [
- "borsh-derive-internal",
- "borsh-schema-derive-internal",
+ "borsh-derive-internal 0.9.1",
+ "borsh-schema-derive-internal 0.9.1",
+ "proc-macro-crate 0.1.5",
+ "proc-macro2 1.0.28",
+ "syn 1.0.75",
+]
+
+[[package]]
+name = "borsh-derive"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37626c9e941a687ee9abef6065b44c379478ae563b7483c613dd705ef1dff59e"
+dependencies = [
+ "borsh-derive-internal 0.10.0",
+ "borsh-schema-derive-internal 0.10.0",
  "proc-macro-crate 0.1.5",
  "proc-macro2 1.0.28",
  "syn 1.0.75",
@@ -391,10 +414,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "borsh-derive-internal"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61820b4c5693eafb998b1e67485423c923db4a75f72585c247bdee32bad81e7b"
+dependencies = [
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "syn 1.0.75",
+]
+
+[[package]]
 name = "borsh-schema-derive-internal"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "196c978c4c9b0b142d446ef3240690bf5a8a33497074a113ff9a337ccb750483"
+dependencies = [
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "syn 1.0.75",
+]
+
+[[package]]
+name = "borsh-schema-derive-internal"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c76cdbfa13def20d1f8af3ae7b3c6771f06352a74221d8851262ac384c122b8e"
 dependencies = [
  "proc-macro2 1.0.28",
  "quote 1.0.9",
@@ -443,6 +488,27 @@ name = "byte-tools"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3b5ca7a04898ad4bcd41c90c5285445ff5b791899bb1b0abdd2a2aa791211d7"
+
+[[package]]
+name = "bytecheck"
+version = "0.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d11cac2c12b5adc6570dad2ee1b87eff4955dac476fe12d81e5fdd352e52406f"
+dependencies = [
+ "bytecheck_derive",
+ "ptr_meta",
+]
+
+[[package]]
+name = "bytecheck_derive"
+version = "0.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13e576ebe98e605500b3c8041bb888e966653577172df6dd97398714eb30b9bf"
+dependencies = [
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "syn 1.0.75",
+]
 
 [[package]]
 name = "bytemuck"
@@ -1540,6 +1606,15 @@ name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
+dependencies = [
+ "ahash 0.7.6",
+]
+
+[[package]]
+name = "hashbrown"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 dependencies = [
  "ahash 0.7.6",
 ]
@@ -2801,8 +2876,8 @@ version = "1.0.0"
 dependencies = [
  "arbitrary",
  "arrayvec 0.7.2",
- "borsh",
- "borsh-derive",
+ "borsh 0.9.1",
+ "borsh-derive 0.9.1",
  "honggfuzz",
  "num-derive",
  "num-traits",
@@ -2825,8 +2900,8 @@ version = "0.1.0"
 dependencies = [
  "arbitrary",
  "arrayvec 0.7.2",
- "borsh",
- "borsh-derive",
+ "borsh 0.9.1",
+ "borsh-derive 0.9.1",
  "honggfuzz",
  "num-derive",
  "num-traits",
@@ -2973,6 +3048,26 @@ checksum = "603bbd6394701d13f3f25aada59c7de9d35a6a5887cfc156181234a44002771b"
 dependencies = [
  "bytes 1.1.0",
  "prost",
+]
+
+[[package]]
+name = "ptr_meta"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0738ccf7ea06b608c10564b31debd4f5bc5e197fc8bfe088f68ae5ce81e7a4f1"
+dependencies = [
+ "ptr_meta_derive",
+]
+
+[[package]]
+name = "ptr_meta_derive"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16b845dbfca988fa33db069c0e230574d15a3088f147a87b64c7589eb662c9ac"
+dependencies = [
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "syn 1.0.75",
 ]
 
 [[package]]
@@ -3292,6 +3387,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rend"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79af64b4b6362ffba04eef3a4e10829718a4896dac19daa741851c86781edf95"
+dependencies = [
+ "bytecheck",
+]
+
+[[package]]
 name = "reqwest"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3354,6 +3458,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "rkyv"
+version = "0.7.39"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cec2b3485b07d96ddfd3134767b8a447b45ea4eb91448d0a35180ec0ffd5ed15"
+dependencies = [
+ "bytecheck",
+ "hashbrown 0.12.3",
+ "ptr_meta",
+ "rend",
+ "rkyv_derive",
+ "seahash",
+]
+
+[[package]]
+name = "rkyv_derive"
+version = "0.7.39"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6eaedadc88b53e36dd32d940ed21ae4d850d5916f2581526921f553a72ac34c4"
+dependencies = [
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "syn 1.0.75",
+]
+
+[[package]]
 name = "rocksdb"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3381,13 +3510,20 @@ dependencies = [
 
 [[package]]
 name = "rust_decimal"
-version = "1.22.0"
+version = "1.28.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d37baa70cf8662d2ba1c1868c5983dda16ef32b105cce41fb5c47e72936a90b3"
+checksum = "e13cf35f7140155d02ba4ec3294373d513a3c7baa8364c162b030e33c61520a8"
 dependencies = [
  "arrayvec 0.7.2",
+ "borsh 0.10.0",
+ "bytecheck",
+ "byteorder",
+ "bytes 1.1.0",
  "num-traits",
+ "rand 0.8.5",
+ "rkyv",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3546,6 +3682,12 @@ dependencies = [
  "ring",
  "untrusted",
 ]
+
+[[package]]
+name = "seahash"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c107b6f4780854c8b126e228ea8869f4d7b71260f962fefb57b996b8959ba6b"
 
 [[package]]
 name = "security-framework"
@@ -3911,8 +4053,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f55a64726bfffacf62fdca86e9d56e04bedc4c50fc0b7ec103cde15a9978c111"
 dependencies = [
  "bincode",
- "borsh",
- "borsh-derive",
+ "borsh 0.9.1",
+ "borsh-derive 0.9.1",
  "futures 0.3.16",
  "mio 0.7.13",
  "solana-banks-interface",
@@ -4493,8 +4635,8 @@ dependencies = [
  "base64 0.13.0",
  "bincode",
  "blake3",
- "borsh",
- "borsh-derive",
+ "borsh 0.9.1",
+ "borsh-derive 0.9.1",
  "bs58 0.3.1",
  "bv",
  "bytemuck",
@@ -4691,8 +4833,8 @@ dependencies = [
  "assert_matches",
  "base64 0.13.0",
  "bincode",
- "borsh",
- "borsh-derive",
+ "borsh 0.9.1",
+ "borsh-derive 0.9.1",
  "bs58 0.4.0",
  "bv",
  "bytemuck",
