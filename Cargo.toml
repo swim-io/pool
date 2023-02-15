@@ -31,7 +31,7 @@ solana-program = "1.8.14"
 spl-token = { version = "3.1.1", features = ["no-entrypoint"] }
 
 #serializiation/deserialzation
-borsh = { version = "0.9.1", features = ["const-generics"] }
+borsh = { version = "0.10.2", features = ["const-generics"] }
 borsh-derive = "0.9.1"
 
 #numerics
